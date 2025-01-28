@@ -5,6 +5,12 @@ In addition to general documentation,
 
 Here I will provide weekly status updates on my project
 
+## Project Mission Statement
+
+The goal of this project is to utilize a variety of data science, and software engineering techniques to build a website that brings some benefit to a group of people (to be decided after project idea submission). In this project I would like to use: 
+- Artificial Intelligence: This could be designing a machine learning model, using NLP, or building a recommendation algorithm
+- Design a website a user can interact with: Allow a user to input something into a website, and receive something in return
+
 ## Week 1: Jan/21 - Jan/27
 - Introduction: Discuss general details and guidlines of project
 - Deliverable: Set up status tracker & Project Ideas
