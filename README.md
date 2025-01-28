@@ -5,9 +5,32 @@ In addition to general documentation,
 
 Here I will provide weekly status updates on my project
 
-Week 1: Jan/21 - Jan/28
+## Week 1: Jan/21 - Jan/28
 - Introduction: Discuss general details and guidlines of project
 - Deliverable: Set up status tracker & Project Ideas
+
+### Failures:
+ 
+ No failures yet.
+
+### Successes:
+
+Enjoyed brainstorming project ideas, and am excited to get started.
+
+### Difficulties: 
+
+Had a hard time designing a project that will incorperate everything I want to accomplish.
+
+### Goals for Next Week
+
+My main goal for next week is to choose a project idea, and work on the design doc. For the design doc I would like to:
+- Create a general outline of what I would like to include in the project, and by which dates I will need to complete everything
+
+Due: Feb/4
+- Create the requirement specification slides: include high level requirements, target audience & users, and an engineering diagram of inputs and outputs of project 
+
+
+Project Ideas
 
 Idea 1: 
 
