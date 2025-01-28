@@ -5,7 +5,7 @@ In addition to general documentation,
 
 Here I will provide weekly status updates on my project
 
-## Week 1: Jan/21 - Jan/28
+## Week 1: Jan/21 - Jan/27
 - Introduction: Discuss general details and guidlines of project
 - Deliverable: Set up status tracker & Project Ideas
 
@@ -48,3 +48,28 @@ Idea 3:
 
 Predict which Tech Skills will be most relevant in the future
 - Utilize historical job description data for tech jobs, and predict which skills & technologies will become more important in the next five year
+
+## Week 2: Jan/28 - Feb/3
+- Deliverable: None 
+
+## Week 3: Feb/4 - Feb/10
+- Deliverable: Create the requirement specification slides: include high level requirements, target audience & users, and an engineering diagram of inputs and outputs of project 
+
+## Week 4: Feb/11 - Feb/17
+- Deliverable: None 
+
+## Week 5: Feb/18 - Feb/24
+- Deliverable: Competency Demo - 5-minute demonstration of something the you have used and learned towards the project 
+
+## Week 6: Feb/25 - Mar/3
+- Deliverable: None 
+
+## Week 7: Mar/4 - Mar/10
+- Deliverable: Design Document - Elaborate on the “hows” to build the project.  This document should be long and fairly low-level.
+
+## Week 8: Mar/11 - Mar/17
+- Deliverable: None 
+
+## Week 9: Mar/18 - Mar/24
+Half way through the semester
+- Deliverable: Proof of Concept Demo - Provide a 5-minute demo to show that you can do the critical feature necessary to complete capstone project. Example: if a recommendation engine is the critical component on project, PoC shall be a simple recommendation engine.
