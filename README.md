@@ -58,6 +58,17 @@ Predict which Tech Skills will be most relevant in the future
 ## Week 2: Jan/28 - Feb/3
 - Deliverable: None 
 
+### Failures:
+Continued research on idea one. My main goal is to get idea one working, but I need to find some data sources that work to validate the model. I have found one article that references two different data sets, but I am having issues accessing them. I will spend the next day or so doing some addional research, and if I cannot find a data source to use, I will pivot to a new idea. 
+
+### Successes: 
+
+Finding the one article that references sources.
+
+### Difficulties: 
+
+Coming up with alternative ideas that would involve easier data sources.
+
 ## Week 3: Feb/4 - Feb/10
 - Deliverable: Create the requirement specification slides: include high level requirements, target audience & users, and an engineering diagram of inputs and outputs of project 
 
