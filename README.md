@@ -72,6 +72,24 @@ Coming up with alternative ideas that would involve easier data sources.
 ## Week 3: Feb/4 - Feb/10
 - Deliverable: Create the requirement specification slides: include high level requirements, target audience & users, and an engineering diagram of inputs and outputs of project 
 
+### Successes: 
+Successfully chose a topic to work on! I decided to do my project on the MBTA Communities Law, and explore the effects of this law on certian topics such as traffic, infrustructure, schools, and property value. 
+
+### Failures:
+No failures this week
+
+### Difficulties: 
+MassDot data I found is very granular, but unfortunately does not include many data points. There are many locations that provide data, but from the 2 I have looked at so far, there were only 2 days worth of data for the entire year for 1 or 2 years. I still think that this data is usable because of the extensive amounts of traffic locations, but it will involve work to make the data usable. 
+
+For next week, I plan to finalize the data sources I would like to use for this project, and begin to ingest & store the data or create a plan how I would like to ingest the data. Some data is easy to access in the form of a csv file. Some data, like the MassDot data does not seem to have export capabilities. I might try and reach out to the website to see if they have an api. Alternitively it would be a rather manual process to retreive the data, but not impossible. 
+
+### Data Sources Identified So Far:
+- Law Info: https://www.mass.gov/info-details/mbta-communities-law-qa#:~:text=The%20MBTA%20Communities%20Act%20requires,%2C%20ferry%20terminal%20or%20subway
+- MassDot: Provides total number of cars that pass through a specific location every 15 minutes: https://www.mass.gov/traffic-volume-and-classification-in-massachusetts
+- Census Data: avialable through mapc.org. Provides population data every 10 years: https://datacommon.mapc.org/browser/datasets/262
+- MAPC Education related Data: Includes Enrollment and Dropout data by town
+
+
 ## Week 4: Feb/11 - Feb/17
 - Deliverable: None 
 
