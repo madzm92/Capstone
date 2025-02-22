@@ -93,6 +93,40 @@ For next week, I plan to finalize the data sources I would like to use for this 
 ## Week 4: Feb/11 - Feb/17
 - Deliverable: None 
 
+### Successes: 
+Continued to look for different data sources and download data.So far I have:
+
+Communities Zoning Spreadsheet: https://www.mass.gov/doc/3a-info-sheetunit-capacity
+
+General Info about the law: https://www.mass.gov/info-details/multi-family-zoning-requirement-for-mbta-communities
+
+Flies from this website above:
+- MBTA Communities Community Categories and Capacity Calculations
+- Compliance Status Sheet as of 2-10-25
+
+Data Sources
+
+Shape Files: MA website
+
+Traffic Data: https://www.mass.gov/traffic-volume-and-classification-in-massachusetts
+- Still need to ingest
+
+Census Data: STILL NEED
+
+MAPC Data Sources: https://datacommon.mapc.org/
+
+Education Data: 
+- Enrollment by School Year (Schools) 2005-2024
+- Drop Out rates from 2007-2022
+- MCAS Science Grade 10: 2015-2023
+- MCAS Math Grade 10: 2005-2025
+
+### Failures:
+No failures this week
+
+### Difficulties: 
+No difficulties this week.
+
 ## Week 5: Feb/18 - Feb/24
 - Deliverable: Competency Demo - 5-minute demonstration of something the you have used and learned towards the project 
 
