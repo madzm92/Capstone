@@ -1,0 +1,26 @@
+[project]
+name = "capstone"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "geopandas (>=1.0.1,<2.0.0)",
+    "sqlalchemy (>=2.0.38,<3.0.0)",
+    "geoalchemy2 (>=0.17.1,<0.18.0)",
+    "psycopg2-binary (>=2.9.10,<3.0.0)",
+    "streamlit (>=1.42.2,<2.0.0)",
+    "matplotlib (>=3.10.0,<4.0.0)",
+    "plotly (>=6.0.0,<7.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "capstone", from = "src"}]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
