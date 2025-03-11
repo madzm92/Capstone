@@ -130,8 +130,24 @@ No difficulties this week.
 ## Week 5: Feb/18 - Feb/24
 - Deliverable: Competency Demo - 5-minute demonstration of something the you have used and learned towards the project 
 
+### Successes: 
+Worked to ingest & store almost all shapefiles associated with housing. Created a small demo of this data, showing existing multi family housing and single family housing for each town
+
+### Failures:
+None
+
+### Difficulties: 
+The shapefiles were difficult to ingest, and took a long time. I also tried to ingest MBTA commuter rail shapefiles, but was not able to complete this. 
+
 ## Week 6: Feb/25 - Mar/3
 - Deliverable: None 
+
+### Successes: 
+
+### Failures:
+Busy week so not much time to work on this project
+
+### Difficulties: 
 
 ## Week 7: Mar/4 - Mar/10
 - Deliverable: Design Document - Elaborate on the “hows” to build the project.  This document should be long and fairly low-level.
@@ -142,3 +158,77 @@ No difficulties this week.
 ## Week 9: Mar/18 - Mar/24
 Half way through the semester
 - Deliverable: Proof of Concept Demo - Provide a 5-minute demo to show that you can do the critical feature necessary to complete capstone project. Example: if a recommendation engine is the critical component on project, PoC shall be a simple recommendation engine.
+
+## Week 10: Mar/25 - Mar/31
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Week 10: Mar/25 - Mar/31
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Week 11: April/1 - April/7
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Week 12: April/8 - April/14
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Week 13: April/15 - April/21
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Week 14: April/22 - April/28
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Week 15: April/29 - May/5
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Part 2
+
+## Week 16: May/6 - May/12
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
+
+## Week 17: May/13 - May/19
+
+### Successes: 
+
+### Failures:
+
+### Difficulties: 
