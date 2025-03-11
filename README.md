@@ -150,13 +150,20 @@ Busy week so not much time to work on this project
 ### Difficulties: 
 
 ## Week 7: Mar/4 - Mar/10
-- Deliverable: Design Document - Elaborate on the “hows” to build the project.  This document should be long and fairly low-level.
+
+### Successes: 
+Downloaded the census data assoicated with Massachusetts towns which includes population estimates broken down by age group. The education data I found can also be used to identify the number of childeren enrolled at each school.
+
+### Failures:
+Was hoping to get more down, but ran out of time. In the next two weeks I plan to make a lot of progress on the design doc, data storage, and research on the model to use.
+
+### Difficulties: 
+Still having trouble ingesting the MassDot traffic data. I might try webscraping, but it seems like it will be too difficult to get manually.
 
 ## Week 8: Mar/11 - Mar/17
-- Deliverable: None 
+- Deliverable: Design Document - Elaborate on the “hows” to build the project.  This document should be long and fairly low-level.
 
 ## Week 9: Mar/18 - Mar/24
-Half way through the semester
 - Deliverable: Proof of Concept Demo - Provide a 5-minute demo to show that you can do the critical feature necessary to complete capstone project. Example: if a recommendation engine is the critical component on project, PoC shall be a simple recommendation engine.
 
 ## Week 10: Mar/25 - Mar/31
