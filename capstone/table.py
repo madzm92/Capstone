@@ -1,5 +1,5 @@
 import geopandas as gpd
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy import create_engine, Column, Integer, String, Float, Date
 from sqlalchemy.ext.declarative import declarative_base
 from geoalchemy2 import Geometry
 from sqlalchemy.orm import sessionmaker
@@ -40,3 +40,29 @@ class ShapeFile(Base):
     habitat = Column(Float)
     geometry = Column(Geometry('GEOMETRY'))
     category = Column(String)  # New column for the category of the shapefile
+
+class CommuterRailLine(Base):
+
+    __tablename__ = 'commuter_rail_line'
+    __table_args__ = {"schema": "general_data"}
+
+    object_id = Column(String, primary_key=True)
+    shape_id = Column(String)
+    route_id = Column(String)
+    category = Column(String)
+    route_short = Column(String)
+    route_long = Column(String)
+    route_desc = Column(String)
+    route_type = Column(String)
+    route_url = Column(String)
+    route_colo = Column(String)
+    route_fare = Column(String)
+    line_id = Column(String)
+    listed_route = Column(String)
+    route_ty_one = Column(String)
+    created_us = Column(String)
+    created_date = Column(Date)
+    last_edite = Column(String)
+    laste_edi_one = Column(Date)
+    shape_st_len = Column(Float)
+    geometry = Column(Geometry('LINESTRING', 4326))

@@ -14,11 +14,12 @@ dependencies = [
     "psycopg2-binary (>=2.9.10,<3.0.0)",
     "streamlit (>=1.42.2,<2.0.0)",
     "matplotlib (>=3.10.0,<4.0.0)",
-    "plotly (>=6.0.0,<7.0.0)"
+    "plotly (>=6.0.0,<7.0.0)",
+    "watchdog (>=6.0.0,<7.0.0)"
 ]
 
 [tool.poetry]
-packages = [{include = "capstone", from = "src"}]
+packages = [{include = "capstone"}]
 
 
 [build-system]

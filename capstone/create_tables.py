@@ -4,7 +4,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from geoalchemy2 import WKTElement
 from sqlalchemy.orm import sessionmaker
 import os
-from table import Base, ShapeFile
+from table import Base
 
 # create table & insert data
 DB_URI = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
