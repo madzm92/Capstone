@@ -1,10 +1,5 @@
-import geopandas as gpd
-from sqlalchemy import create_engine, Column, Integer, String, Float, text
-from sqlalchemy.ext.declarative import declarative_base
-from geoalchemy2 import WKTElement
-from sqlalchemy.orm import sessionmaker
-import os
-from capstone.database_set_up.table_definitions import Base
+from sqlalchemy import create_engine, text
+from capstone.database_set_up.table_definitions.population_data import Base
 
 # create table & insert data
 DB_URI = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"

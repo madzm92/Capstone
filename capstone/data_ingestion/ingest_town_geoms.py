@@ -1,11 +1,6 @@
 import geopandas as gpd
-from sqlalchemy import create_engine, Column, Integer, String, Float, text
-from sqlalchemy.ext.declarative import declarative_base
-from geoalchemy2 import WKTElement
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
 import os
-from capstone.database_set_up.table_definitions import Base, ShapeFile
-from shapely import wkt
 
 
 #TODO: generalize

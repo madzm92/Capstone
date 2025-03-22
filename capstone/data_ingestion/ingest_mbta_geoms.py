@@ -1,15 +1,8 @@
 import geopandas as gpd
-from sqlalchemy import create_engine, Column, Integer, String, Float, text
-from sqlalchemy.ext.declarative import declarative_base
-from geoalchemy2 import WKTElement
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
 import os
 from geoalchemy2.types import Geometry as GeoAlchemyGeometry
-
 from shapely.geometry import LineString
-
-from capstone.database_set_up.table_definitions import Base, ShapeFile
-from shapely import wkt
 
 # Path to the directory containing all the shapefile folders
 shapefile_base_dir = 'data_sources/Commuter_Rail_Routes/'

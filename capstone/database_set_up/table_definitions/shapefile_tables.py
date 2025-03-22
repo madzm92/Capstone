@@ -66,3 +66,13 @@ class CommuterRailLine(Base):
     laste_edi_one = Column(Date)
     shape_st_len = Column(Float)
     geometry = Column(Geometry('LINESTRING', 4326))
+
+class CommuterRailLine(Base):
+
+    __tablename__ = 'commuter_rail_line'
+    __table_args__ = {"schema": "general_data"}
+
+    object_id = Column(String, primary_key=True)
+    shape_id = Column(String)
+    route_id = Column(String)
+    category = Column(String)
