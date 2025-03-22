@@ -1,9 +1,6 @@
-import geopandas as gpd
-from sqlalchemy import create_engine, Column, Integer, String, Float, Date
+from sqlalchemy import Column, String, Float, Date
 from sqlalchemy.ext.declarative import declarative_base
 from geoalchemy2 import Geometry
-from sqlalchemy.orm import sessionmaker
-import os
 
 # Define the model with 'loc_id', 'wkb_geometry', and 'category'
 Base = declarative_base()
