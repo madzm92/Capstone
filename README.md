@@ -163,8 +163,26 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 ## Week 8: Mar/11 - Mar/17
 - Deliverable: Design Document - Elaborate on the “hows” to build the project.  This document should be long and fairly low-level.
 
+### Successes: 
+- Began work on the database design to store all of the data.
+
+### Failures:
+- None
+
+### Difficulties: 
+- None
+
 ## Week 9: Mar/18 - Mar/24
-- Deliverable: Proof of Concept Demo - Provide a 5-minute demo to show that you can do the critical feature necessary to complete capstone project. Example: if a recommendation engine is the critical component on project, PoC shall be a simple recommendation engine.
+
+### Successes: 
+- Almost finished database design. Continued work on traffic data must be done to complete the design, but all other tables are generally designed.
+- Table creation and data ingestion for town_nameplate & community_classification tables.
+
+### Failures:
+- None
+
+### Difficulties: 
+- Still no luck with the traffic data. Next week I will possibly try web scraping. I also want to spend time researching the best way to anaylize the traffic data. 
 
 ## Week 10: Mar/25 - Mar/31
 
