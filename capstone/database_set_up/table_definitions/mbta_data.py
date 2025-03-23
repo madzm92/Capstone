@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from geoalchemy2 import Geometry
 
@@ -21,7 +21,7 @@ class MbtaTrips(Base):
     __table_args__ = {"schema": "general_data"}
 
     stop_name = Column(String, primary_key=True)
-    stop_datetime = Column(DateTime)
-    direction_id = Column(String)
-    avg_on = Column(Integer)
-    avg_off = Column(Integer)
+    stop_datetime = Column(DateTime, primary_key=True)
+    direction_id = Column(String, primary_key=True)
+    average_ons = Column(Float)
+    average_offs = Column(Float)

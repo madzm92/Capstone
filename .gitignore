@@ -4,5 +4,8 @@
 # Ignore data sources
 *.txt
 *.csv
+*.xlsx
 data_sources
-town_data
+mbta_data
+*shapefiles
+*shp

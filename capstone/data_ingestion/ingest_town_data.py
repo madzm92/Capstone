@@ -36,7 +36,7 @@ town_nameplate = pd.merge(communities_df, join_df, on='classification_type')
 town_nameplate = town_nameplate.drop(columns=['classification_type'])
 
 
-#TODO: get county
+#get county
 town_df = pd.read_excel("town_data/zip_code_database.xlsx")
 town_df = town_df[town_df['state'] == 'MA']
 town_df = town_df.drop(columns=["zip", "type", "decommissioned", "acceptable_cities", "unacceptable_cities", "state", "timezone", "area_codes", "world_region", "country", "latitude", "longitude", "irs_estimated_population"])
@@ -44,6 +44,8 @@ town_df = town_df.drop(columns=["zip", "type", "decommissioned", "acceptable_cit
 town_df = town_df.drop_duplicates()
 town_nameplate = pd.merge(town_nameplate, town_df, left_on='town_name', right_on='primary_city')
 
+
+#TODO: Get correct totals for sqft & acres
 #get size: sum shapefiles
 query = """
     SELECT town_name, sum(acres), sum(sqft)
