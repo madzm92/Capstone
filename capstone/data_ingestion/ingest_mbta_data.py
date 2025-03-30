@@ -4,6 +4,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 import geopandas as gpd
 import os
+from geoalchemy2.types import Geometry as GeoAlchemyGeometry
+from shapely.geometry import LineString, MultiLineString, Point
 
 # use file MBTA_Commuter_Trips_mass_dot
 
@@ -26,7 +28,7 @@ mbta_rte = os.path.join(shapefile_base_dir, 'TRAINS_RTE_TRAIN.shp')
 mbta_rte_df = gpd.read_file(mbta_rte)
 
 #INSERT mbta_rte_df INTO commuter_rail_line
-mbta_rte_df = mbta_rte_df.rename(columns={"COMM_LINE":"line_name", "COMMRAIL":"Status", "SHAPE_LEN":"Shape_length"})
+mbta_rte_df = mbta_rte_df.rename(columns={"COMM_LINE":"line_name", "COMMRAIL":"status", "SHAPE_LEN":"shape_length"})
 
 #Get CommuterRailStops data: comes from TRAINS_NODE shape file
 mbta_stops = os.path.join(shapefile_base_dir, 'TRAINS_NODE.shp')
@@ -49,7 +51,7 @@ new_names_list.sort()
 # 37 points are classiffied as lines that do not exist in the TRAINS_RTE_TRAIN file. Updated to 'Other'
 # MULTIPLE, MULTIPLE (WESTERN ROUTE), NEW HAMPSHIRE MAIN, SHORE LINE, SOUTH COAST RAIL (P), STOUGHTON BRANCH
 # TODO: Add back in?
-names_to_update = {'CAPE COD MAIN LINE':'CapeFLYER', 'FAIRMOUNT LINE':'Fairmount', 'FITCHBURG LINE':'Fitchburg', 'FOXBORO (SPECIAL EVENTS ONLY)':'Foxboro', 'FRAMINGHAM/WORCESTER LINE':'Framingham/Worcester', 'FRANKLIN LINE':'Franklin', 'FRANKLIN LINE(P)': 'Franklin', 'GREENBUSH LINE': 'Greenbush', 'HAVERHILL LINE': 'Haverhill', 'KINGSTON LINE':'Kingston', 'LOWELL LINE':'Lowell', 'MIDDLEBOROUGH MAIN': 'Middleborough/Lakeville', 'MIDDLEBOROUGH/LAKEVILLE LINE': 'Middleborough/Lakeville', 'MULTIPLE': 'Other', 'MULTIPLE (WESTERN ROUTE)': 'Other', 'NEEDHAM LINE':'Needham', 'NEW HAMPSHIRE MAIN':'Other', 'NEWBURYPORT LINE': 'Newburyport/Rockport', 'NEWBURYPORT/ROCKPORT LINE': 'Newburyport/Rockport', 'PROVIDENCE/STOUGHTON LINE': 'Providence/Stoughton', 'ROCKPORT LINE': 'Newburyport/Rockport', 'SHORE LINE': 'Other', 'SOUTH COAST RAIL (P)': 'Other', 'STOUGHTON BRANCH': 'Other'}
+names_to_update = {'South Coast Rail':'South Coast', 'CAPE COD MAIN LINE':'CapeFLYER', 'FAIRMOUNT LINE':'Fairmount', 'FITCHBURG LINE':'Fitchburg', 'FOXBORO (SPECIAL EVENTS ONLY)':'Foxboro', 'FRAMINGHAM/WORCESTER LINE':'Framingham/Worcester', 'FRANKLIN LINE':'Franklin', 'FRANKLIN LINE(P)': 'Franklin', 'GREENBUSH LINE': 'Greenbush', 'HAVERHILL LINE': 'Haverhill', 'KINGSTON LINE':'Kingston', 'LOWELL LINE':'Lowell', 'MIDDLEBOROUGH MAIN': 'Middleborough/Lakeville', 'MIDDLEBOROUGH/LAKEVILLE LINE': 'Middleborough/Lakeville', 'MULTIPLE': 'Other', 'MULTIPLE (WESTERN ROUTE)': 'Other', 'NEEDHAM LINE':'Needham', 'NEW HAMPSHIRE MAIN':'Other', 'NEWBURYPORT LINE': 'Newburyport/Rockport', 'NEWBURYPORT/ROCKPORT LINE': 'Newburyport/Rockport', 'PROVIDENCE/STOUGHTON LINE': 'Providence/Stoughton', 'ROCKPORT LINE': 'Newburyport/Rockport', 'SHORE LINE': 'Other', 'SOUTH COAST RAIL (P)': 'Other', 'STOUGHTON BRANCH': 'Other'}
 
 #convert data into new line names
 mbta_stops_df['line_name'] = mbta_stops_df['line_name'].replace(names_to_update)
@@ -93,7 +95,7 @@ in_list2_not_list1 = list(set(updated_stop_shapefile_names_list) - set(updated_s
 #USED ONLY FOR CHECKING
 #Plimptonville, Plymouth do not exist: closed in 2021
 # update stop_trips_names df to include original names for 18 mismatched stops
-rename_dict = {'Dedham Corp Center':'Dedham Corp. Center','Four Corners / Geneva': 'Four Corners/Geneva Ave','Franklin':'Franklin/Dean College','JFK/UMASS':'Jfk/Umass','Littleton / Rte 495': 'Littleton/Route 495','Melrose Cedar Park':'Melrose/Cedar Park', 'River Works/GE Employees Only':'River Works', 'TF Green Airport':'Tf Green Airport', 'Yawkey':'Lansdowne'}
+rename_dict = {'South Coast Rail':'South Coast', 'Dedham Corp Center':'Dedham Corp. Center','Four Corners / Geneva': 'Four Corners/Geneva Ave','Franklin':'Franklin/Dean College','JFK/UMASS':'Jfk/Umass','Littleton / Rte 495': 'Littleton/Route 495','Melrose Cedar Park':'Melrose/Cedar Park', 'River Works/GE Employees Only':'River Works', 'TF Green Airport':'Tf Green Airport', 'Yawkey':'Lansdowne'}
 
 #rename values in df to new values
 mbta_trip_df['stop_name'] = mbta_trip_df['stop_name'].replace(rename_dict)
@@ -104,27 +106,78 @@ stop_sequence_df.drop_duplicates(inplace=True)
 mbta_stops_df = pd.merge(mbta_stops_df, stop_sequence_df, on='stop_name', how="left")
 
 #TODO: get town name of stop
+mbta_all_df = pd.read_csv("mbta_data/mbta_lines_stops_towns.csv")
 
-breakpoint()
+mbta_stops_new_df = mbta_all_df[['stop_name', 'line_name', 'stop_sequence', 'town_name', 'geometry']]
 
 # wrangle commuter_rail_trips data from mbta_trip_df
 # get stop_name, stop_datetime, direction_id, average_ons, average_offs
 mbta_trip_df = mbta_trip_df[['stop_name', 'stop_datetime', 'direction_id', 'average_ons', 'average_offs']]
 
 #TODO: fix date issues!!!!!!
+mbta_trip_df['stop_datetime'] = pd.to_datetime(mbta_trip_df['stop_datetime'], format='%Y/%m/%d %H:%M:%S%z')
+
+#1 Insert into commuter_rail_line
+mbta_rte_df['geometry'] = mbta_rte_df['geometry'].apply(lambda geom: geom.wkt if isinstance(geom, LineString) else geom)
+mbta_rte_df['geometry'] = mbta_rte_df['geometry'].apply(lambda geom: geom.wkt if isinstance(geom, MultiLineString) else geom)
+
+dtype = {
+    "geometry": GeoAlchemyGeometry("LINESTRING", srid=3857)
+}
+mbta_rte_df.iloc[0, mbta_rte_df.columns.get_loc("line_name")] = 'Haverhill (P)'
+mbta_rte_df.iloc[4, mbta_rte_df.columns.get_loc("line_name")] = 'Middleborough/Lakeville (P)'
+mbta_rte_df.iloc[7, mbta_rte_df.columns.get_loc("line_name")] = 'Franklin/Foxboro'
+
+# mbta_rte_df.to_sql(
+#     'commuter_rail_line',
+#     engine,
+#     schema='general_data',
+#     if_exists='append',
+#     index=False,
+#     dtype=dtype  # Use GeoAlchemy2 Geometry type for the geometry column
+# )
+
+
+# 2 insert data into commuter_rail_stops
+mbta_stops_new_df['geometry'] = mbta_stops_new_df['geometry'].apply(lambda geom: geom.wkt if isinstance(geom, Point) else geom)
+mbta_stops_new_df['line_name'] = mbta_stops_new_df['line_name'].replace({"South Coast Rail":"South Coast"})
+mbta_stops_new_df['stop_sequence'] = mbta_stops_new_df['stop_sequence'].fillna(0)
+
+#get id from 
+query = """
+    SELECT id, line_name
+    FROM general_data.commuter_rail_line
+"""
+result = session.execute(text(query))
+line_id_df = pd.DataFrame(result.fetchall(), columns=['line_id', 'line_name'])
+mbta_stops_new_df = pd.merge(mbta_stops_new_df, line_id_df, on='line_name')
+mbta_stops_new_df.drop(columns=['line_name'], inplace=True)
+
+dtype = {
+    "geometry": GeoAlchemyGeometry("POINT", srid=2249)
+}
+# mbta_stops_new_df.to_sql(
+#     'commuter_rail_stops',
+#     engine,
+#     schema='general_data',
+#     if_exists='append',
+#     index=False,
+#     dtype=dtype  # Use GeoAlchemy2 Geometry type for the geometry column
+# )
 
 #TODO: insert data into tables: commuter_rail_line, commuter_rail_stops, commuter_rail_trips
-mbta_rte_df.to_sql('commuter_rail_line', engine, schema='general_data', if_exists='append', index=False)
-mbta_stops_df.to_sql('commuter_rail_stops', engine, schema='general_data', if_exists='append', index=False)
+#get id from 
+query = """
+    SELECT id, stop_name
+    FROM general_data.commuter_rail_stops
+"""
+result = session.execute(text(query))
+stop_id_df = pd.DataFrame(result.fetchall(), columns=['stop_id', 'stop_name'])
+mbta_trip_df = pd.merge(mbta_trip_df, stop_id_df, on='stop_name')
+
+#drop duplicate rows
+mbta_trip_df.drop_duplicates(inplace=True, subset=['stop_name', 'stop_datetime', 'direction_id'])
+mbta_trip_df['line_name'] = mbta_trip_df['stop_name'].replace({"Readville":"South Coast"})
+mbta_trip_df.drop(columns=['stop_name', 'line_name'], inplace=True)
+breakpoint()
 mbta_trip_df.to_sql('commuter_rail_trips', engine, schema='general_data', if_exists='append', index=False)
-
-
-
-# query = """
-#     SELECT town_name, sum(acres), sum(sqft)
-#     FROM general_data.shapefiles
-#     GROUP BY town_name
-# """
-# result = session.execute(text(query))
-# df = pd.DataFrame(result.fetchall(), columns=['town_name', 'total_acres','total_sqft'])
-# town_nameplate = pd.merge(town_nameplate, df, on='town_name')
