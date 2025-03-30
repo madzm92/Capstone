@@ -2,6 +2,8 @@ import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+import geopandas as gpd
+import os
 
 # use file MBTA_Commuter_Trips_mass_dot
 
@@ -11,15 +13,118 @@ engine = create_engine(DB_URI)
 Session = sessionmaker(bind=engine)
 session = Session()
 
-mbta_df = pd.read_csv("mbta_data/MBTA_Commuter_Trips_mass_dot.csv")
-mbta_df = mbta_df.rename(columns={"stop_id":"stop_name", "stop_time":"stop_datetime", "route_name":"line_name", "stopsequence":"stop_sequence"})
+#get CommuterRailTrips data
+mbta_trip_df = pd.read_csv("mbta_data/MBTA_Commuter_Trips_mass_dot.csv")
+mbta_trip_df = mbta_trip_df.rename(columns={"stop_id":"stop_name", "stop_time":"stop_datetime", "route_name":"line_name", "stopsequence":"stop_sequence"})
+
+# should this be used?
+mbta_nameplate_df = mbta_trip_df[["line_name", "stop_name", "stop_sequence"]]
+
+#get CommuterRailLine data: comes from TRAINS_RTE_TRAIN shapefile
+shapefile_base_dir = 'mbta_data/trains/'
+mbta_rte = os.path.join(shapefile_base_dir, 'TRAINS_RTE_TRAIN.shp')
+mbta_rte_df = gpd.read_file(mbta_rte)
+
+#INSERT mbta_rte_df INTO commuter_rail_line
+mbta_rte_df = mbta_rte_df.rename(columns={"COMM_LINE":"line_name", "COMMRAIL":"Status", "SHAPE_LEN":"Shape_length"})
+
+#Get CommuterRailStops data: comes from TRAINS_NODE shape file
+mbta_stops = os.path.join(shapefile_base_dir, 'TRAINS_NODE.shp')
+mbta_stops_df = gpd.read_file(mbta_stops)
+
+mbta_stops_df = mbta_stops_df.rename(columns={"STATION":"stop_name", "LINE_BRNCH":"line_name"})
+mbta_stops_df = mbta_stops_df.drop(columns=['C_RAILSTAT', 'AMTRAK', 'MAP_STA', 'STATE'])
+mbta_stops_df = mbta_stops_df.dropna()
+
+#DROP ALL NA: drop the words line from line name, and convert to lowercase
+actual_names = mbta_rte_df['line_name'].unique()
+actual_names_list = actual_names.tolist()
+actual_names_list.sort()
+
+# Not all lines in stop data exist in the lines file. These values will be dropped for now
+new_names = mbta_stops_df['line_name'].unique()
+new_names_list = new_names.tolist()
+new_names_list.sort()
+
+# 37 points are classiffied as lines that do not exist in the TRAINS_RTE_TRAIN file. Updated to 'Other'
+# MULTIPLE, MULTIPLE (WESTERN ROUTE), NEW HAMPSHIRE MAIN, SHORE LINE, SOUTH COAST RAIL (P), STOUGHTON BRANCH
+# TODO: Add back in?
+names_to_update = {'CAPE COD MAIN LINE':'CapeFLYER', 'FAIRMOUNT LINE':'Fairmount', 'FITCHBURG LINE':'Fitchburg', 'FOXBORO (SPECIAL EVENTS ONLY)':'Foxboro', 'FRAMINGHAM/WORCESTER LINE':'Framingham/Worcester', 'FRANKLIN LINE':'Franklin', 'FRANKLIN LINE(P)': 'Franklin', 'GREENBUSH LINE': 'Greenbush', 'HAVERHILL LINE': 'Haverhill', 'KINGSTON LINE':'Kingston', 'LOWELL LINE':'Lowell', 'MIDDLEBOROUGH MAIN': 'Middleborough/Lakeville', 'MIDDLEBOROUGH/LAKEVILLE LINE': 'Middleborough/Lakeville', 'MULTIPLE': 'Other', 'MULTIPLE (WESTERN ROUTE)': 'Other', 'NEEDHAM LINE':'Needham', 'NEW HAMPSHIRE MAIN':'Other', 'NEWBURYPORT LINE': 'Newburyport/Rockport', 'NEWBURYPORT/ROCKPORT LINE': 'Newburyport/Rockport', 'PROVIDENCE/STOUGHTON LINE': 'Providence/Stoughton', 'ROCKPORT LINE': 'Newburyport/Rockport', 'SHORE LINE': 'Other', 'SOUTH COAST RAIL (P)': 'Other', 'STOUGHTON BRANCH': 'Other'}
+
+#convert data into new line names
+mbta_stops_df['line_name'] = mbta_stops_df['line_name'].replace(names_to_update)
+
+# update stop names between mbta_stops_df & mbta_trip_df
+stop_shapefile_names = mbta_stops_df['stop_name'].unique()
+stop_shapefile_names_list = stop_shapefile_names.tolist()
+stop_shapefile_names_list.sort()
+updated_stop_shapefile_names_dict = {}
+updated_stop_shapefile_names_list = []
+for word in stop_shapefile_names_list:
+    new_word = word.title()
+    updated_stop_shapefile_names_dict.update({word:new_word})
+    updated_stop_shapefile_names_list.append(new_word)
+
+#rename values in df to new values
+mbta_stops_df['stop_name'] = mbta_stops_df['stop_name'].replace(updated_stop_shapefile_names_dict)
 
 
-mbta_nameplate_df = mbta_df[["line_name", "stop_name", "stop_sequence"]]
-#TODO: get town_name & geometry from shapefiles
+# stop names for trips data
+stop_trips_names = mbta_trip_df['stop_name'].unique()
+stop_trips_names_list = stop_trips_names.tolist()
+stop_trips_names_list.sort()
+updated_stop_trips_names_dict = {}
+updated_stop_trips_names_list = []
+for word in stop_trips_names_list:
+    new_word = word.replace(" / ", "/")
+    new_word = new_word.replace(" /", "/")
+    new_word = new_word.replace("/ ", "/")
+    updated_stop_trips_names_dict.update({word:new_word})
+    updated_stop_trips_names_list.append(new_word)
 
-mbta_trips_df = mbta_df[["stop_name", "stop_datetime", "direction_id", "average_ons", "average_offs"]]
-mbta_trips_df = mbta_trips_df.fillna(0)
+#rename values in df to new values
+mbta_trip_df['stop_name'] = mbta_trip_df['stop_name'].replace(updated_stop_trips_names_dict)
+
+
+#total of 18 in the trips file but not in the stops shapefile
+stop_trips_names_list_to_rename = list(set(updated_stop_trips_names_list) - set(updated_stop_shapefile_names_list))
+in_list2_not_list1 = list(set(updated_stop_shapefile_names_list) - set(updated_stop_trips_names_list))
+
+#USED ONLY FOR CHECKING
+#Plimptonville, Plymouth do not exist: closed in 2021
+# update stop_trips_names df to include original names for 18 mismatched stops
+rename_dict = {'Dedham Corp Center':'Dedham Corp. Center','Four Corners / Geneva': 'Four Corners/Geneva Ave','Franklin':'Franklin/Dean College','JFK/UMASS':'Jfk/Umass','Littleton / Rte 495': 'Littleton/Route 495','Melrose Cedar Park':'Melrose/Cedar Park', 'River Works/GE Employees Only':'River Works', 'TF Green Airport':'Tf Green Airport', 'Yawkey':'Lansdowne'}
+
+#rename values in df to new values
+mbta_trip_df['stop_name'] = mbta_trip_df['stop_name'].replace(rename_dict)
+
+#add stop sequence
+stop_sequence_df = mbta_trip_df[['stop_name', 'stop_sequence']]
+stop_sequence_df.drop_duplicates(inplace=True)
+mbta_stops_df = pd.merge(mbta_stops_df, stop_sequence_df, on='stop_name', how="left")
+
+#TODO: get town name of stop
 
 breakpoint()
 
+# wrangle commuter_rail_trips data from mbta_trip_df
+# get stop_name, stop_datetime, direction_id, average_ons, average_offs
+mbta_trip_df = mbta_trip_df[['stop_name', 'stop_datetime', 'direction_id', 'average_ons', 'average_offs']]
+
+#TODO: fix date issues!!!!!!
+
+#TODO: insert data into tables: commuter_rail_line, commuter_rail_stops, commuter_rail_trips
+mbta_rte_df.to_sql('commuter_rail_line', engine, schema='general_data', if_exists='append', index=False)
+mbta_stops_df.to_sql('commuter_rail_stops', engine, schema='general_data', if_exists='append', index=False)
+mbta_trip_df.to_sql('commuter_rail_trips', engine, schema='general_data', if_exists='append', index=False)
+
+
+
+# query = """
+#     SELECT town_name, sum(acres), sum(sqft)
+#     FROM general_data.shapefiles
+#     GROUP BY town_name
+# """
+# result = session.execute(text(query))
+# df = pd.DataFrame(result.fetchall(), columns=['town_name', 'total_acres','total_sqft'])
+# town_nameplate = pd.merge(town_nameplate, df, on='town_name')

@@ -186,13 +186,12 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 
 ## Week 10: Mar/25 - Mar/31
 
-### Successes: 
-
-### Failures:
-
-### Difficulties: 
-
-## Week 10: Mar/25 - Mar/31
+### Deliverable: 
+- Finish ingesting/storing data:
+- MBTA Data
+- Schools Data
+- Land Data 
+- Population Data (probably will take 2 weeks)
 
 ### Successes: 
 
@@ -202,6 +201,12 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 
 ## Week 11: April/1 - April/7
 
+### Deliverable: 
+- Finish Populaition data
+- Ingest traffic data
+- Research best way to predict/analyze traffic data
+- Begin working on design doc
+
 ### Successes: 
 
 ### Failures:
@@ -209,6 +214,13 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 ### Difficulties: 
 
 ## Week 12: April/8 - April/14
+
+### Deliverable: 
+- Continue researching models
+- Continue working on design doc
+
+In Person Meeting:
+- Review progress on design doc
 
 ### Successes: 
 
@@ -218,6 +230,9 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 
 ## Week 13: April/15 - April/21
 
+### Deliverable: 
+- Make edits to design doc based on general review in meeting
+
 ### Successes: 
 
 ### Failures:
@@ -226,7 +241,11 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 
 ## Week 14: April/22 - April/28
 
-### Successes: 
+### Deliverable: 
+- Finalize design doc for review by the beginning of the summer session
+
+
+### Successes: Design Doc
 
 ### Failures:
 
