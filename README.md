@@ -190,7 +190,7 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 - Finish ingesting/storing data:
 - MBTA Data
 - Schools Data
-- Land Data 
+- Town Data 
 - Population Data (probably will take 2 weeks)
 
 ### Successes: 
