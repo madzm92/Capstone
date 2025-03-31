@@ -192,7 +192,6 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 - Schools Data
 - Town Data: data associated with law, and towns affected
 - Land Data: reorginize already ingested shapefiles to match chosen format
-- Population Data (probably will take 2 weeks)
 
 ### Successes: 
 
@@ -203,7 +202,7 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 ## Week 11: April/1 - April/7
 
 ### Deliverable: 
-- Finish Populaition data
+- Population Data: Will take a little longer due to ZIP/ZICTA conversion
 - Ingest traffic data
 - Research best way to predict/analyze traffic data
 - Begin working on design doc
