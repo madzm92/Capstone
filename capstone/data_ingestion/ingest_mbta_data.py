@@ -99,11 +99,13 @@ def insert_commuter_rail_trip_data(mbta_trip_df):
 
     mbta_trip_df.to_sql('commuter_rail_trips', engine, schema='general_data', if_exists='append', index=False)
 
-#DB Set Up
+#DB Set Up: move to seperate file
 DB_URI = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
 engine = create_engine(DB_URI)
 Session = sessionmaker(bind=engine)
 session = Session()
+
+###ADD TO MAIN
 shapefile_base_dir = 'mbta_data/trains/'
 mbta_trip_df = wrangle_trip_data()
 
