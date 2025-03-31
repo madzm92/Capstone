@@ -3,8 +3,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, text
 from sqlalchemy.ext.declarative import declarative_base
 from geoalchemy2 import WKTElement
 from sqlalchemy.orm import sessionmaker
-import os
-from capstone.database_set_up.table_definitions.shapefile_tables import Base
+from capstone.database_set_up.table_definitions.education_tables import Base
 
 # create table & insert data
 DB_URI = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
