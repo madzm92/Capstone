@@ -10,7 +10,8 @@ class SchoolNameplate(Base):
     __tablename__ = 'school_nameplate'
     __table_args__ = {"schema": "general_data"}
 
-    school_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True) # auto incrementing unique id
+    schid = Column(String)
     school_name = Column(String)
     town_name = Column(String, ForeignKey(TownNameplate.town_name))
 
@@ -19,8 +20,10 @@ class AnnualEnrollment(Base):
     __tablename__ = 'annual_enrollment'
     __table_args__ = {"schema": "general_data"}
 
-    school_id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True) # auto incrementing unique id
+    school_id = Column(Integer, ForeignKey(SchoolNameplate.id))
     town_name = Column(String, ForeignKey(TownNameplate.town_name))
+    school_year_start = Column(DateTime) 
     school_year_end = Column(DateTime) 
     total_enrolled = Column(Integer)
     grade_pk = Column(Integer)
@@ -33,7 +36,7 @@ class AnnualEnrollment(Base):
     grade_six = Column(Integer)
     grade_seven = Column(Integer)
     grade_eight = Column(Integer)
-    graade_nine = Column(Integer)
+    grade_nine = Column(Integer)
     grade_ten = Column(Integer)
     grade_eleven = Column(Integer)
     grade_twelve = Column(Integer)
