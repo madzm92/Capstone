@@ -10,9 +10,7 @@ class TrafficNameplate(Base):
     __tablename__ = 'traffic_nameplate'
     __table_args__ = {"schema": "general_data"}
 
-    # New auto-incrementing ID
     location_id = Column(String, primary_key=True)
-
     town_name = Column(String, ForeignKey(TownNameplate.town_name))
     street_on = Column(String)
     street_from = Column(String)
@@ -22,3 +20,19 @@ class TrafficNameplate(Base):
     latest = Column(DateTime)
     latitude = Column(String)
     longitude = Column(String)
+    geom = Column(Geometry(geometry_type='POINT', srid=4326))  # Geo field
+
+class TrafficCounts(Base):
+
+    __tablename__ = 'traffic_counts'
+    __table_args__ = {"schema": "general_data"}
+
+    location_id = Column(String, ForeignKey(TrafficNameplate.location_id), primary_key=True)
+    time_range = Column(String, primary_key=True)
+    first_fifteen = Column(Integer)
+    second_fifteen = Column(Integer)
+    third_fifteen = Column(Integer)
+    fourth_fifteen = Column(Integer)
+    hourly_count = Column(Integer)
+    date = Column(DateTime)
+    weekday = Column(String)

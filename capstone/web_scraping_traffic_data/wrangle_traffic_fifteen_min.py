@@ -62,4 +62,5 @@ for file in data_dir.glob("*.xls"):
 # Combine all data
 combined_df = pd.concat(all_dfs, ignore_index=True)
 combined_df.head()
+#TODO: drop index column
 combined_df.to_excel('traffic_data_inital_data.xlsx')
