@@ -28,11 +28,10 @@ class TrafficCounts(Base):
     __table_args__ = {"schema": "general_data"}
 
     location_id = Column(String, ForeignKey(TrafficNameplate.location_id), primary_key=True)
-    time_range = Column(String, primary_key=True)
+    start_date_time = Column(DateTime, primary_key=True)
     first_fifteen = Column(Integer)
     second_fifteen = Column(Integer)
     third_fifteen = Column(Integer)
     fourth_fifteen = Column(Integer)
     hourly_count = Column(Integer)
-    date = Column(DateTime)
     weekday = Column(String)
