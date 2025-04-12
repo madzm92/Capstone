@@ -8,9 +8,8 @@ import time
 import pandas as pd
 
 # STEP 0: Load the first 10 Loc IDs from the Excel file
-df = pd.read_excel("traffic_locations_list.xlsx")
-loc_ids = df['Loc ID'].astype(str).head(10).tolist()  # Ensure they're strings
-loc_ids = df['Loc ID'].astype(str).str.zfill(7).head(10).tolist()
+df = pd.read_excel("filtered_traffic_locations_list.xlsx")
+loc_ids = df['Loc ID'].astype(str).iloc[2000:5000].tolist()
 
 # Setup options
 options = Options()
@@ -18,18 +17,19 @@ options.add_experimental_option("detach", True)
 driver = webdriver.Chrome(options=options)
 
 # Navigate to main page
-driver.get("https://mhd.public.ms2soft.com/tcds/tsearch.asp?loc=Mhd&mod=TCDS")
+def go_to_search_page():
+    driver.get("https://mhd.public.ms2soft.com/tcds/tsearch.asp?loc=Mhd&mod=TCDS")
+    iframe = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "iframe")))
+    driver.switch_to.frame(iframe)
 
-# Wait for and switch to iframe
-iframe = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "iframe")))
-driver.switch_to.frame(iframe)
-
+# Initial load of the search page
+go_to_search_page()
 original_window = driver.current_window_handle
 
 # Loop through each Loc ID
 for loc_id in loc_ids:
     print(f"🔍 Searching for Loc ID: {loc_id}")
-    
+
     try:
         # Input the Loc ID
         input_box = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "ddlLocalId")))
@@ -91,7 +91,13 @@ for loc_id in loc_ids:
     except Exception as e:
         print(f"❌ Error processing Loc ID {loc_id}: {e}")
 
-    # Add a pause between Loc ID searches to avoid overload
+    # Reset the page (ensure we're always on the main page for the next Loc ID)
+    try:
+        driver.switch_to.window(original_window)
+        go_to_search_page()
+    except Exception as e:
+        print(f"⚠️ Failed to reset page for next Loc ID: {e}")
+
     time.sleep(2)
 
 print("🏁 All Loc IDs processed.")

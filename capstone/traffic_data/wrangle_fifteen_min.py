@@ -3,8 +3,6 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from datetime import datetime
 
-
-
 # Directory containing the files
 data_dir = Path("fifteen_min_files")
 
@@ -19,6 +17,9 @@ def extract_data_from_file(file_path):
 
     town_text = soup.find("td", string="Community")
     town = town_text.find_next_sibling("td").text.strip() if town_text else None
+
+    loc_id_text = soup.find("td", string="Location ID")
+    loc_id = loc_id_text.find_next_sibling("td").text.strip() if loc_id_text else None
 
     # Convert start_date to datetime and extract weekday
     if start_date:
@@ -46,9 +47,9 @@ def extract_data_from_file(file_path):
         if len(cols) == 6 and "TOTAL" not in cols[0].text:
             time = cols[0].text.strip()
             values = [col.text.strip() for col in cols[1:]]
-            data.append([time] + values + [start_date_dt, town, weekday])
+            data.append([time] + values + [start_date_dt, town, weekday, loc_id])
 
-    columns = ["Time", "1st", "2nd", "3rd", "4th", "Hourly count", "Date", "Town", "Weekday"]
+    columns = ["Time", "1st", "2nd", "3rd", "4th", "Hourly count", "Date", "Town", "Weekday", "Loc ID"]
     return pd.DataFrame(data, columns=columns)
 
 # Iterate over all files in the folder
@@ -61,4 +62,4 @@ for file in data_dir.glob("*.xls"):
 # Combine all data
 combined_df = pd.concat(all_dfs, ignore_index=True)
 combined_df.head()
-breakpoint()
+combined_df.to_excel('traffic_data_inital_data.xlsx')
