@@ -194,20 +194,32 @@ Still having trouble ingesting the MassDot traffic data. I might try webscraping
 - Land Data: reorginize already ingested shapefiles to match chosen format
 
 ### Successes: 
+- Worked on ingesting and storing the MBTA data
+- Started working on the schools data
+
 
 ### Failures:
+- Still have some minor updates needed associated with the the town and land data but this can be resolved after the design doc is finished
 
 ### Difficulties: 
+- Igesting and storing the data is taking longer than expected and some tasks will remain open while writinf rhe design doc. My goal is to have all data cleaned and stored before the start of the second semester, so the entire semester is focused on working on the model and visualiztions.
 
 ## Week 11: April/1 - April/7
 
 ### Deliverable: 
-- Population Data: Will take a little longer due to ZIP/ZICTA conversion
+- Finish school data
 - Ingest traffic data
 - Research best way to predict/analyze traffic data
 - Begin working on design doc
+- Population Data: Will take a little longer due to ZIP/ZICTA conversion
 
 ### Successes: 
+- Worked on writing a web scraping script to get the traffic data. While I have not gotten all of the data yet, I have a script that works, and I have stored the napeplate data associated with traffic locations, and began ingesting the traffic count data
+- Finished ingesting and storing the mbta data. This includes the mbta stop napelate info, and the mbta trip data
+
+To view the table creation or ingestion scripts, checkout:
+- Database Info: database_set_up/table_creations_scripts & database_set_up/table_definitions
+- Data Ingestions: data_ingestion/<data_type>
 
 ### Failures:
 
