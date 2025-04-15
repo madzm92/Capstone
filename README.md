@@ -221,29 +221,26 @@ To view the table creation or ingestion scripts, checkout:
 - Database Info: database_set_up/table_creations_scripts & database_set_up/table_definitions
 - Data Ingestions: data_ingestion/<data_type>
 
-### Failures:
-
-### Difficulties: 
-
 ## Week 12: April/8 - April/14
 
 ### Deliverable: 
-- Continue researching models
-- Continue working on design doc
+- Ingest traffic data
+- Create outline for design doc
 
 In Person Meeting:
 - Review progress on design doc
 
 ### Successes: 
-
-### Failures:
-
-### Difficulties: 
+- Finished designing storage for the traffic data
+- Create outline and begin thinking of components of design doc
 
 ## Week 13: April/15 - April/21
 
 ### Deliverable: 
-- Make edits to design doc based on general review in meeting
+- Finish population data
+- Continue work on Design Doc: finish sections that I can already anaswer
+- Research traffic analysis
+- Research and define each model that I will use 
 
 ### Successes: 
 
@@ -254,7 +251,8 @@ In Person Meeting:
 ## Week 14: April/22 - April/28
 
 ### Deliverable: 
-- Finalize design doc for review by the beginning of the summer session
+- Due April 28: Finalize design doc for review by the beginning of the summer session
+- Set up meeting to walk through design doc
 
 
 ### Successes: Design Doc
