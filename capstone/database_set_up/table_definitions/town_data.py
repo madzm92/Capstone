@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
+from geoalchemy2 import Geometry
 
 Base = declarative_base()
 
@@ -20,7 +21,8 @@ class TownNameplate(Base):
     town_name = Column(String, primary_key=True)
     county = Column(String)
     total_acres = Column(Float)
-    total_sqft = Column(Float)
+    total_sqmi = Column(Float)
+    geometry = Column(Geometry('GEOMETRY'))
     classification_id = Column(Integer, ForeignKey(CommunityClassification.classification_id))
     total_housing = Column(Integer)
     min_multi_family = Column(Integer)

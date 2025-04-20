@@ -2,12 +2,16 @@ import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+import os
+import geopandas as gpd
 
 #DB Set Up
 DB_URI = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
 engine = create_engine(DB_URI)
 Session = sessionmaker(bind=engine)
 session = Session()
+conn = engine.raw_connection()
+cursor = conn.cursor()
 
 # community_classification data
 data = {
@@ -37,7 +41,7 @@ town_nameplate = town_nameplate.drop(columns=['classification_type'])
 
 
 #get county
-town_df = pd.read_excel("town_data/zip_code_database.xlsx")
+town_df = pd.read_excel("population_data/zip_code_database.xlsx")
 town_df = town_df[town_df['state'] == 'MA']
 town_df = town_df.drop(columns=["zip", "type", "decommissioned", "acceptable_cities", "unacceptable_cities", "state", "timezone", "area_codes", "world_region", "country", "latitude", "longitude", "irs_estimated_population"])
 
@@ -45,20 +49,20 @@ town_df = town_df.drop_duplicates()
 town_nameplate = pd.merge(town_nameplate, town_df, left_on='town_name', right_on='primary_city')
 
 
-#TODO: Get correct totals for sqft & acres
-#get size: sum shapefiles
-query = """
-    SELECT town_name, sum(acres), sum(sqft)
-    FROM general_data.shapefiles
-    GROUP BY town_name
-"""
-result = session.execute(text(query))
-df = pd.DataFrame(result.fetchall(), columns=['town_name', 'total_acres','total_sqft'])
-town_nameplate = pd.merge(town_nameplate, df, on='town_name')
+# Get correct totals for sqft & acres
+# get size: sum shapefiles
+full_path = os.path.join('town_data/town_whole_shapefiles/townssurvey_shp', 'TOWNSSURVEY_POLYM.shp')
+main_shapefile = gpd.read_file(full_path)
 
-town_nameplate_order = ["town_name", "county", "total_acres", "total_sqft", "classification_id", "total_housing", "min_multi_family", "min_land_area", "developable_station_area", "percent_district_st_area"]
-town_nameplate = town_nameplate[town_nameplate_order]
+main_shapefile_df = main_shapefile[['TOWN', 'AREA_ACRES', 'AREA_SQMI', 'geometry']]
+main_shapefile_df = main_shapefile_df.rename(columns={'TOWN':'town_name', 'AREA_ACRES': 'total_acres', 'AREA_SQMI':'total_sqmi', 'geometry':'geom'})
+main_shapefile_df['town_name'] = main_shapefile_df['town_name'].str.title()
+main_shapefile_df['town_name'] = main_shapefile_df['town_name'].replace('Manchester-By-The-Sea', 'Manchester')
 
-#insert data
+#update dow
+
+town_nameplate = pd.merge(town_nameplate, main_shapefile_df, on='town_name')
+town_nameplate['geom'] = town_nameplate['geom'].apply(lambda geom: geom.wkt if geom else None)
+
 community_classification_df.to_sql('community_classification', engine, schema='general_data', if_exists='append', index=False)
 town_nameplate.to_sql('town_nameplate', engine, schema='general_data', if_exists='append', index=False)
