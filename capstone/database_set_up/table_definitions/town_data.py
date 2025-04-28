@@ -29,3 +29,11 @@ class TownNameplate(Base):
     min_land_area = Column(Integer) # minimum land area of community
     developable_station_area = Column(Integer) # amount of land within a half mile of the station
     percent_district_st_area = Column(Integer) # percent of district to be in station area
+
+class LandClassification(Base):
+
+    __tablename__ = 'land_classification'
+    __table_args__ = {"schema": "general_data"}
+
+    use_type = Column(String, primary_key=True)
+    general_classification = Column(String)
