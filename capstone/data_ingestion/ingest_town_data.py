@@ -45,6 +45,14 @@ town_df = pd.read_excel("population_data/zip_code_database.xlsx")
 town_df = town_df[town_df['state'] == 'MA']
 town_df = town_df.drop(columns=["zip", "type", "decommissioned", "acceptable_cities", "unacceptable_cities", "state", "timezone", "area_codes", "world_region", "country", "latitude", "longitude", "irs_estimated_population"])
 
+#TODO: rename  
+# Buzzards Bay -> Bourne
+# Foxboro -> Foxborough
+# East Freetown -> Freetown
+# Middleboro -> Middleborough
+# North Attleboro -> North Attleborough
+# Tyngsboro -> Tyngsborough
+
 town_df = town_df.drop_duplicates()
 town_nameplate = pd.merge(town_nameplate, town_df, left_on='town_name', right_on='primary_city')
 
@@ -63,6 +71,11 @@ main_shapefile_df['town_name'] = main_shapefile_df['town_name'].replace('Manches
 
 town_nameplate = pd.merge(town_nameplate, main_shapefile_df, on='town_name')
 town_nameplate['geom'] = town_nameplate['geom'].apply(lambda geom: geom.wkt if geom else None)
+
+df = pd.read_csv("town_data/compliance_status.csv")
+df = df[['Municipality', 'Compliance Status', 'Compliance Deadlines']]
+df = df.rename(columns={"Municipality":"town_name", "Compliance Status": "current_status", "Compliance Deadlines": "compliance_deadline"})
+town_nameplate = pd.merge(town_nameplate, df, on='town_name')
 
 community_classification_df.to_sql('community_classification', engine, schema='general_data', if_exists='append', index=False)
 town_nameplate.to_sql('town_nameplate', engine, schema='general_data', if_exists='append', index=False)

@@ -39,9 +39,23 @@ town_shapes = gpd.read_postgis(
     geom_col='geom'  # tell geopandas which column is the geometry
 )
 town_shapes.set_crs(epsg=26986, allow_override=True, inplace=True)
-
-# Then, reproject to lat/lon
 town_shapes = town_shapes.to_crs(epsg=4326)
+#######
+
+### GET MBTA STOPS
+
+stop_points = gpd.read_postgis(
+    sql="SELECT stop_name, line_id, geometry FROM general_data.commuter_rail_stops",
+    con=engine,
+    geom_col='geometry'
+)
+
+# Make sure it's in correct CRS
+stop_points.set_crs(epsg=26986, allow_override=True, inplace=True)
+stop_points = stop_points.to_crs(epsg=4326)
+stop_points['latitude'] = stop_points.geometry.y
+stop_points['longitude'] = stop_points.geometry.x
+
 #######
 
 # Close the session
@@ -64,14 +78,30 @@ selected_town = st.selectbox(
 if selected_town == "All Towns":
     filtered_town = town_shapes
     filtered_traffic = df
+    view_state = pdk.ViewState(
+        latitude=town_shapes.geometry.centroid.y.mean(),
+        longitude=town_shapes.geometry.centroid.x.mean(),
+        zoom=8
+    )
 else:
     filtered_town = town_shapes[town_shapes['town_name'] == selected_town]
     filtered_traffic = df[df['town_name'] == selected_town]
+    view_state = pdk.ViewState(
+        latitude=filtered_town.geometry.centroid.y.mean(),
+        longitude=filtered_town.geometry.centroid.x.mean(),
+        zoom=11
+    )
 
 print("shapes", filtered_town)
 print("traffic points", filtered_traffic)
 
-# Traffic point layer
+filtered_traffic['stop_name'] = ''
+filtered_traffic['line_id'] = ''
+stop_points['street_on'] = ''
+stop_points['street_at'] = ''
+stop_points['direction'] = ''
+stop_points['latest'] = ''
+# # Traffic point layer
 traffic_layer = pdk.Layer(
     "ScatterplotLayer",
     filtered_traffic,
@@ -81,17 +111,6 @@ traffic_layer = pdk.Layer(
     pickable=True,  # <-- Enable hover
 )
 
-# Tooltip settings
-tooltip = {
-    "html": "<b>Street On:</b> {street_on} <br/>"
-            "<b>Street At:</b> {street_at} <br/>"
-            "<b>Direction:</b> {direction} <br/>"
-            "<b>Latest Count:</b> {latest}",
-    "style": {
-        "backgroundColor": "steelblue",
-        "color": "white"
-    }
-}
 # Polygon layer
 polygon_layer = pdk.Layer(
     "GeoJsonLayer",
@@ -103,6 +122,31 @@ polygon_layer = pdk.Layer(
     line_width_min_pixels=1,
 )
 
+stop_layer = pdk.Layer(
+    "ScatterplotLayer",
+    stop_points,
+    get_position='[longitude, latitude]',
+    get_fill_color='[0, 150, 255, 255]', 
+    get_radius=80,
+    pickable=True,
+)
+
+tooltip = {
+    "html": """
+    <b>Stop Name:</b> {stop_name} <br/>
+    <b>Line ID:</b> {line_id} <br/>
+    <b>Street On:</b> {street_on} <br/>
+    <b>Street At:</b> {street_at} <br/>
+    <b>Direction:</b> {direction} <br/>
+    <b>Latest:</b> {latest} <br/>
+    """,
+    "style": {
+        "backgroundColor": "steelblue",
+        "color": "white",
+        "fontSize": "12px"
+    }
+}
+
 # Combine the map
 st.pydeck_chart(pdk.Deck(
     initial_view_state=pdk.ViewState(
@@ -110,6 +154,6 @@ st.pydeck_chart(pdk.Deck(
         longitude=filtered_town.geometry.centroid.x.mean(),
         zoom=11,
     ),
-    layers=[polygon_layer, traffic_layer],
+    layers=[polygon_layer, traffic_layer, stop_layer],
     tooltip=tooltip
 ))
