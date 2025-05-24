@@ -84,8 +84,19 @@ if selected_town == "All Towns":
         zoom=8
     )
 else:
+    # Step 1: Filter to selected town
     filtered_town = town_shapes[town_shapes['town_name'] == selected_town]
-    filtered_traffic = df[df['town_name'] == selected_town]
+
+    # Step 2: Find surrounding towns using spatial intersection
+    # Buffer is optional – helps catch edge cases where borders are only touching
+    buffered_town = filtered_town.geometry.buffer(0.001)  # Adjust buffer distance if needed
+    surrounding_towns = town_shapes[town_shapes.geometry.intersects(buffered_town.unary_union)]
+
+    # Step 3: Filter traffic data to selected + surrounding towns
+    town_names = surrounding_towns['town_name'].unique()
+    filtered_traffic = df[df['town_name'].isin(town_names)]
+
+    # Step 4: Adjust view state to center on the selected town
     view_state = pdk.ViewState(
         latitude=filtered_town.geometry.centroid.y.mean(),
         longitude=filtered_town.geometry.centroid.x.mean(),
