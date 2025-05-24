@@ -18,10 +18,8 @@ class TrafficNameplate(Base):
     street_at = Column(String)
     direction = Column(String)
     latest = Column(DateTime)
-    current_status = Column(String)
     latitude = Column(String)
     longitude = Column(String)
-    compliance_deadline = Column(Date)
     geom = Column(Geometry(geometry_type='POINT', srid=4326))  # Geo field
 
 class TrafficCounts(Base):

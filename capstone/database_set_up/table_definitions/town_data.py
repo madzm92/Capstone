@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date
 from sqlalchemy.ext.declarative import declarative_base
 from geoalchemy2 import Geometry
 
@@ -27,7 +27,9 @@ class TownNameplate(Base):
     total_housing = Column(Integer)
     min_multi_family = Column(Integer)
     min_land_area = Column(Integer) # minimum land area of community
+    current_status = Column(String)
     developable_station_area = Column(Integer) # amount of land within a half mile of the station
+    compliance_deadline = Column(Date)
     percent_district_st_area = Column(Integer) # percent of district to be in station area
 
 class LandClassification(Base):

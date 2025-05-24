@@ -86,7 +86,7 @@ avg_daily_by_sensor_year = daily_traffic.groupby(['year', 'sensor_id'])['volume'
 
 # Merge with population data
 hist_data = avg_daily_by_sensor_year.merge(pop_hist, on="year")
-breakpoint()
+
 # --- Train a regression model per sensor ---
 print("Training linear regression models per sensor...")
 sensor_models = {}
@@ -160,5 +160,6 @@ print(f"Processed {len(model_inputs)} scenarios across {len(parcels)} parcels")
 model_inputs_df = pd.DataFrame(model_inputs)
 model_outputs_df = pd.DataFrame(model_outputs)
 
-breakpoint()
+model_inputs_df.to_csv("model_inputs_boxford.csv", index=False)
+model_outputs_df.to_csv("model_outputs_boxford.csv", index=False)
 print("Model results saved to 'outputs/' folder.")
