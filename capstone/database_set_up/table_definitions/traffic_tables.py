@@ -20,6 +20,8 @@ class TrafficNameplate(Base):
     latest = Column(DateTime)
     latitude = Column(String)
     longitude = Column(String)
+    functional_class = Column(String)
+    rural_urban = Column(String)
     geom = Column(Geometry(geometry_type='POINT', srid=4326))  # Geo field
 
 class TrafficCounts(Base):
