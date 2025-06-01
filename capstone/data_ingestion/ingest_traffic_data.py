@@ -39,6 +39,8 @@ def ingest_traffic_nameplate(session):
                     "location_id": loc_id,
                     "county": row_values[0] if len(row_values) > 0 else None,
                     "town_name": row_values[1] if len(row_values) > 1 else None,
+                    "functional_class": row_values[2] if len(row_values) > 4 else None,
+                    "rural_urban": row_values[3] if len(row_values) > 4 else None,
                     "street_on": row_values[4] if len(row_values) > 4 else None,
                     "street_from": row_values[5] if len(row_values) > 5 else None,
                     "street_to": row_values[6] if len(row_values) > 6 else None,
@@ -75,6 +77,7 @@ def ingest_traffic_nameplate(session):
     # save to file & DB for safe keeping
     result_df.to_excel('traffic_data/filtered_traffic_locations_list.xlsx')
     traffic_nameplate_df.to_postgis(name='traffic_nameplate', con=engine, if_exists='append', index=False, schema='general_data')
+
     return traffic_nameplate_df
 
 def ingest_traffic_data(traffic_nameplate_df: pd.DataFrame, engine):
@@ -83,7 +86,7 @@ def ingest_traffic_data(traffic_nameplate_df: pd.DataFrame, engine):
     Insert data into traffic_counts table"""
 
     # Load the uploaded Excel file again
-    file_path = "traffic_data/traffic_data_inital_data.xlsx"
+    file_path = "traffic_data/boxford_traffic_data.xlsx"
     traffic_data_df = pd.read_excel(file_path, sheet_name=0, header=0)
     traffic_data_df['start_date_time'] = pd.to_datetime(traffic_data_df['Date'].astype(str) + " " + traffic_data_df['Time'].str[:5] + ":00")
     traffic_data_df = traffic_data_df.drop(columns=['Unnamed: 0', 'Town', 'Date', 'Time'])
