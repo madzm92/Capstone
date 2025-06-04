@@ -5,6 +5,8 @@ from shapely.geometry import Point
 from db_connection import DatabaseConnection
 import os, re
 
+# Note, 2010 decennial data was ingested seperately with minor manipulation of this script
+
 def ingest_census_crosswalk(engine):
     """Utilize the zip_code_database file from zip code file.
     Clean data and store in nameplate table"""
