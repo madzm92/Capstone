@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 
 # Directory containing the files
-data_dir = Path("fifteen_min_files")
+data_dir = Path("boxford_downloads")
 
 # Function to extract data from a single file
 def extract_data_from_file(file_path):
@@ -35,8 +35,11 @@ def extract_data_from_file(file_path):
 
     # Extract interval data
     table = soup.find("th", string="Interval: 15 mins")
+    
     if not table:
-        return pd.DataFrame()
+        table = soup.find("th", string="Interval: 60 mins")
+        if not table:
+            return pd.DataFrame()
 
     interval_table = table.find_parent("table")
     rows = interval_table.find_all("tr")[4:]  # Skip headers
@@ -48,6 +51,10 @@ def extract_data_from_file(file_path):
             time = cols[0].text.strip()
             values = [col.text.strip() for col in cols[1:]]
             data.append([time] + values + [start_date_dt, town, weekday, loc_id])
+        if len(cols) == 2 and "TOTAL" not in cols[0].text:
+            time = cols[0].text.strip()
+            values = [col.text.strip() for col in cols[1:]]
+            data.append([time] + [0,0,0,0] + [values[0]] + [start_date_dt, town, weekday, loc_id])
 
     columns = ["Time", "1st", "2nd", "3rd", "4th", "Hourly count", "Date", "Town", "Weekday", "Loc ID"]
     return pd.DataFrame(data, columns=columns)
@@ -63,4 +70,4 @@ for file in data_dir.glob("*.xls"):
 combined_df = pd.concat(all_dfs, ignore_index=True)
 combined_df.head()
 #TODO: drop index column
-combined_df.to_excel('traffic_data_inital_data.xlsx')
+combined_df.to_excel('boxford_traffic_data_3.xlsx')
