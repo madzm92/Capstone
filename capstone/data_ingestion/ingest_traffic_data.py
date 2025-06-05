@@ -84,23 +84,27 @@ def ingest_traffic_data(traffic_nameplate_df: pd.DataFrame, engine):
     """Read data from file that includes web scraped traffic instances.
     Rename columns, and validate that the location ids exist in the traffic_nameplate table (fk relationship).
     Insert data into traffic_counts table"""
-
+    all = pd.DataFrame()
     # Load the uploaded Excel file again
-    file_path = "traffic_data/boxford_traffic_data.xlsx"
-    traffic_data_df = pd.read_excel(file_path, sheet_name=0, header=0)
-    traffic_data_df['start_date_time'] = pd.to_datetime(traffic_data_df['Date'].astype(str) + " " + traffic_data_df['Time'].str[:5] + ":00")
-    traffic_data_df = traffic_data_df.drop(columns=['Unnamed: 0', 'Town', 'Date', 'Time'])
-    #convert column names
-    traffic_data_df = traffic_data_df.rename(columns={
-        '1st':'first_fifteen', '2nd':'second_fifteen','3rd':'third_fifteen','4th':'fourth_fifteen', 'Hourly count':'hourly_count', 'Weekday':'weekday', 'Loc ID':'location_id'})
+    file_path = ["traffic_data/boxford_traffic_data.xlsx","traffic_data/boxford_traffic_data_2.xlsx","traffic_data/boxford_traffic_data_3.xlsx"]
+    for file in file_path:
+        traffic_data_df= pd.read_excel(file, sheet_name=0, header=0)
+        traffic_data_df['start_date_time'] = pd.to_datetime(traffic_data_df['Date'].astype(str) + " " + traffic_data_df['Time'].str[:5] + ":00")
+        traffic_data_df = traffic_data_df.drop(columns=['Unnamed: 0', 'Town', 'Date', 'Time'])
+        #convert column names
+        traffic_data_df = traffic_data_df.rename(columns={
+            '1st':'first_fifteen', '2nd':'second_fifteen','3rd':'third_fifteen','4th':'fourth_fifteen', 'Hourly count':'hourly_count', 'Weekday':'weekday', 'Loc ID':'location_id'})
 
-    #TODO: fix location ID issue. Make sure these match across files
-    traffic_data_df = traffic_data_df.drop_duplicates(subset=['location_id', 'start_date_time'])
-    existing_ids = traffic_nameplate_df['location_id'].unique().tolist()
-    existing_ids_list = [str(x) for x in existing_ids]
-    traffic_data_df['location_id'] = traffic_data_df['location_id'].astype(str)
-    traffic_data_filtered_df = traffic_data_df[traffic_data_df['location_id'].isin(existing_ids_list)]
-    traffic_data_filtered_df.to_sql('traffic_counts', engine, schema='general_data', if_exists='append', index=False)
+        #TODO: fix location ID issue. Make sure these match across files
+        traffic_data_df = traffic_data_df.drop_duplicates(subset=['location_id', 'start_date_time'])
+        existing_ids = traffic_nameplate_df['location_id'].unique().tolist()
+        existing_ids_list = [str(x) for x in existing_ids]
+        traffic_data_df['location_id'] = traffic_data_df['location_id'].astype(str)
+        traffic_data_filtered_df = traffic_data_df[traffic_data_df['location_id'].isin(existing_ids_list)]
+        all = pd.concat([all, traffic_data_filtered_df])
+
+    all = all.drop_duplicates(keep='last')
+    all.to_sql('traffic_counts', engine, schema='general_data', if_exists='append', index=False)
 
 if __name__ == '__main__':
     db_url = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
