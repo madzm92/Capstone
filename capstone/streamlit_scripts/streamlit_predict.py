@@ -15,8 +15,8 @@ session = Session()
 # --- Load Data ---
 @st.cache_data
 def load_data():
-    inputs = pd.read_csv("model_inputs_boxford.csv")
-    outputs = pd.read_csv("model_outputs_boxford.csv")
+    inputs = pd.read_csv("model_inputs_boxford_rf.csv")
+    outputs = pd.read_csv("model_outputs_boxford_rf.csv")
     traffic = gpd.read_postgis(
         """SELECT tn.geom as geometry, tn.location_id as sensor_id 
     FROM general_data.traffic_nameplate tn 
