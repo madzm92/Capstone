@@ -9,3 +9,4 @@ data_sources
 mbta_data
 *shapefiles
 *shp
+*.env
