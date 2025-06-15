@@ -23,13 +23,14 @@ TRIPS_PER_PERSON = 3.5
 ALPHA = 2.0
 MIN_DATA_POINTS = 3
 
-print("Loading data...")
-
 parcels = gpd.read_postgis(
-    """SELECT s.town_name, s.acres as area_acres, s.loc_id as PID, s.geometry, tn.min_multi_family
-        FROM general_data.shapefiles s
-        LEFT JOIN general_data.town_nameplate tn ON s.town_name = tn.town_name
-        WHERE s.town_name = 'Boxford'""",
+    f"""
+    SELECT s.town_name, s.acres as area_acres, s.loc_id as PID, s.geometry, 
+           s.use_type, s.transit, s.sqft, s.total_excluded, tn.min_multi_family
+    FROM general_data.shapefiles s
+    LEFT JOIN general_data.town_nameplate tn ON s.town_name = tn.town_name
+    WHERE s.town_name = '{TOWN}' AND (s.total_excluded IS NULL OR s.total_excluded = 0)
+    """,
     engine,
     geom_col="geometry"
 )
@@ -40,53 +41,55 @@ if parcels.crs is None:
 parcels['centroid'] = parcels.geometry.centroid
 
 traffic = gpd.read_postgis(
-    """SELECT tn.geom as geometry, tn.location_id as sensor_id 
-        FROM general_data.traffic_nameplate tn 
-        WHERE tn.town_name = 'Boxford'""",
+    f"""
+    SELECT tn.geom as geometry, tn.location_id as sensor_id, tn.functional_class
+    FROM general_data.traffic_nameplate tn 
+    WHERE tn.town_name = '{TOWN}'
+    """,
     engine,
     geom_col="geometry"
 )
 
-traffic_hist = pd.read_sql("""
+traffic_hist = pd.read_sql(f"""
     SELECT tn.town_name, tn.location_id as sensor_id, 
            tc.start_date_time as timestamp, tc.hourly_count as volume
     FROM general_data.traffic_nameplate tn  
     LEFT JOIN general_data.traffic_counts tc ON tn.location_id = tc.location_id
-    WHERE tn.town_name = 'Boxford'
+    WHERE tn.town_name = '{TOWN}'
 """, engine)
 
-pop_hist = pd.read_sql("""
+pop_hist = pd.read_sql(f"""
     SELECT ap.year, tcc.town_name, ap.total_population as population
     FROM general_data.annual_population ap
     LEFT JOIN general_data.town_census_crosswalk tcc ON ap.zip_code = tcc.zip_code
-    WHERE tcc.town_name = 'Boxford'
+    WHERE tcc.town_name = '{TOWN}'
 """, engine)
 
-print("Aggregating traffic data to yearly averages...")
+print("Preprocessing traffic data by weekday...")
 
 traffic_hist['datetime'] = pd.to_datetime(traffic_hist['timestamp'])
-traffic_hist['weekday'] = traffic_hist['datetime'].dt.dayofweek  # 0=Monday
+traffic_hist['weekday'] = traffic_hist['datetime'].dt.dayofweek
 traffic_hist['date'] = traffic_hist['datetime'].dt.date
 traffic_hist = traffic_hist.dropna(subset=['date'])
 
-# Aggregate to daily totals
 daily_traffic = (
     traffic_hist.groupby(['date', 'sensor_id', 'weekday'])['volume']
     .sum()
     .reset_index()
 )
 
-# Join population by year
 daily_traffic['year'] = pd.to_datetime(daily_traffic['date']).dt.year
-pop_hist['year'] = pop_hist['year'].astype(np.int32)
+pop_hist['year'] = pop_hist['year'].astype(int)
 daily_traffic = daily_traffic.merge(pop_hist, on='year', how='left')
-breakpoint()
+daily_traffic = daily_traffic.merge(traffic[['sensor_id', 'functional_class']], on='sensor_id', how='left')
+
 print("Training Random Forest models per sensor...")
 sensor_models = {}
 for sensor_id, group in daily_traffic.groupby('sensor_id'):
     if len(group) < MIN_DATA_POINTS:
         continue
-    X = group[['population', 'weekday']].values
+    X = group[['population', 'weekday']].copy()
+    X['functional_class'] = group['functional_class'].astype('category').cat.codes
     y = group['volume'].values
     model = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, y)
     sensor_models[sensor_id] = model
@@ -111,7 +114,11 @@ for _, parcel in parcels.iterrows():
             "pop_increase_pct": pct,
             "new_units": round(new_units, 2),
             "new_people": round(new_people, 1),
-            "new_trips": round(new_trips, 1)
+            "new_trips": round(new_trips, 1),
+            "use_type": parcel['use_type'],
+            "transit": parcel['transit'],
+            "sqft": parcel['sqft'],
+            "total_excluded": parcel['total_excluded']
         })
 
         centroid = parcel['centroid']
@@ -122,11 +129,21 @@ for _, parcel in parcels.iterrows():
 
         for i, row in traffic.iterrows():
             sensor_id = row['sensor_id']
+            func_class_code = pd.Series([row['functional_class']]).astype('category').cat.codes[0]
             model = sensor_models.get(sensor_id)
             added_trips = new_trips * weights.iloc[i]
+            weekday = 2  # Tuesday as representative day
 
-            weekday = 2  # Wednesday as representative day
-            baseline_pred = model.predict([[baseline_pop, weekday]])[0] if model else daily_traffic['volume'].mean()
+            if model:
+                pred_input = [[
+                    baseline_pop,
+                    weekday,
+                    func_class_code
+                ]]
+                baseline_pred = model.predict(pred_input)[0]
+            else:
+                baseline_pred = daily_traffic['volume'].mean()
+
             pct_increase = (added_trips / baseline_pred) * 100 if baseline_pred > 0 else 0
 
             model_outputs.append({
@@ -136,7 +153,8 @@ for _, parcel in parcels.iterrows():
                 "weekday": weekday,
                 "added_trips": round(added_trips, 2),
                 "pct_increase": round(pct_increase, 2),
-                "distance_km": round(distances_km.iloc[i], 3)
+                "distance_km": round(distances_km.iloc[i], 3),
+                "functional_class": row['functional_class']
             })
 
 print(f"Processed {len(model_inputs)} scenarios across {len(parcels)} parcels")
@@ -144,7 +162,62 @@ print(f"Processed {len(model_inputs)} scenarios across {len(parcels)} parcels")
 model_inputs_df = pd.DataFrame(model_inputs)
 model_outputs_df = pd.DataFrame(model_outputs)
 
-breakpoint()
 model_inputs_df.to_csv("model_inputs_boxford_rf.csv", index=False)
 model_outputs_df.to_csv("model_outputs_boxford_rf.csv", index=False)
-print("Random Forest model results saved.")
+print("Random Forest weekday-level model results with functional class and land classification saved.")
+
+# Function for user-defined parcel simulation
+
+def predict_traffic_for_parcel(parcel_id, pop_pct):
+    parcel = parcels[parcels['PID'] == parcel_id].iloc[0]
+    min_multi_family = parcel['min_multi_family']
+    new_units = min_multi_family * (pop_pct / 100)
+    new_people = new_units * AVG_HH_SIZE
+    new_trips = new_people * TRIPS_PER_PERSON
+
+    print(f"\nSelected Parcel: {parcel_id}")
+    print(f"  - Use Type: {parcel['use_type']}")
+    print(f"  - Transit Access: {parcel['transit']}")
+    print(f"  - New Units: {round(new_units, 2)}")
+    print(f"  - New Trips: {round(new_trips, 1)}")
+
+    centroid = parcel['centroid']
+    distances = traffic.geometry.distance(centroid)
+    distances_km = distances / 1000
+    weights = 1 / np.power(distances_km + 1e-6, ALPHA)
+    weights /= weights.sum()
+
+    predictions = []
+    weekday = 2  # Tuesday
+
+    for i, row in traffic.iterrows():
+        sensor_id = row['sensor_id']
+        func_class_code = pd.Series([row['functional_class']]).astype('category').cat.codes[0]
+        model = sensor_models.get(sensor_id)
+        added_trips = new_trips * weights.iloc[i]
+
+        if model:
+            pred_input = [[
+                baseline_pop,
+                weekday,
+                func_class_code
+            ]]
+            baseline_pred = model.predict(pred_input)[0]
+        else:
+            baseline_pred = daily_traffic['volume'].mean()
+
+        pct_increase = (added_trips / baseline_pred) * 100 if baseline_pred > 0 else 0
+
+        predictions.append({
+            "sensor_id": sensor_id,
+            "added_trips": round(added_trips, 2),
+            "pct_increase": round(pct_increase, 2),
+            "distance_km": round(distances_km.iloc[i], 3),
+            "functional_class": row['functional_class']
+        })
+
+    return pd.DataFrame(predictions)
+
+# Example usage:
+# test_predictions = predict_traffic_for_parcel('BOX12345', 15)
+# print(test_predictions)
