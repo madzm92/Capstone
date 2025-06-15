@@ -41,6 +41,7 @@ def load_data():
     parcels = parcels.to_crs(epsg=4326)
     parcels['lon'] = parcels.centroid.x
     parcels['lat'] = parcels.centroid.y
+    print(parcels)
 
     traffic = gpd.read_postgis(
         f"""
@@ -76,12 +77,9 @@ predictions_df = traffic_df[
     (traffic_df['pop_increase_pct'] == selected_pct)
 ].copy()
 
-st.subheader("Predicted Traffic Impacts")
-st.dataframe(predictions_df[['sensor_id', 'added_trips', 'pct_increase', 'distance_km', 'functional_class']])
-
 # --- Map Visualization ---
 max_pct = predictions_df["pct_increase"].max()
-predictions_df["radius"] = predictions_df["pct_increase"].apply(lambda x: max(x * 40, 100))
+predictions_df["radius"] = predictions_df["pct_increase"].apply(lambda x: max(x * 40, 40))
 
 norm = plt.Normalize(predictions_df["pct_increase"].min(), max_pct)
 cmap = plt.get_cmap("RdYlGn_r")
@@ -145,3 +143,6 @@ st.pydeck_chart(pdk.Deck(
         "style": {"backgroundColor": "steelblue", "color": "white"}
     }
 ))
+
+st.subheader("Predicted Traffic Impacts")
+st.dataframe(predictions_df[['sensor_id', 'added_trips', 'pct_increase', 'distance_km', 'functional_class']])
