@@ -22,6 +22,7 @@ AVG_HH_SIZE = 2.4
 TRIPS_PER_PERSON = 3.5
 ALPHA = 2.0
 MIN_DATA_POINTS = 3
+COMMUTER_RAIL_SPLITS = [0, 50, 100]  # percent using commuter rail
 
 parcels = gpd.read_postgis(
     f"""
@@ -45,6 +46,15 @@ traffic = gpd.read_postgis(
     SELECT tn.geom as geometry, tn.location_id as sensor_id, tn.functional_class
     FROM general_data.traffic_nameplate tn 
     WHERE tn.town_name = '{TOWN}'
+    """,
+    engine,
+    geom_col="geometry"
+)
+
+commuter_rail = gpd.read_postgis(
+    f"""
+    SELECT stop_name, town_name, geometry
+    FROM general_data.commuter_rail_stops
     """,
     engine,
     geom_col="geometry"
@@ -88,9 +98,16 @@ sensor_models = {}
 for sensor_id, group in daily_traffic.groupby('sensor_id'):
     if len(group) < MIN_DATA_POINTS:
         continue
+
+    sensor_geom = traffic.loc[traffic['sensor_id'] == sensor_id, 'geometry'].iloc[0]
+    distances_km = parcels['centroid'].distance(sensor_geom) / 1000
+    avg_distance_km = distances_km.mean()
+
     X = group[['population', 'weekday']].copy()
     X['functional_class'] = group['functional_class'].astype('category').cat.codes
+    X['distance_km'] = avg_distance_km
     y = group['volume'].values
+
     model = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, y)
     sensor_models[sensor_id] = model
 
@@ -101,61 +118,71 @@ baseline_pop = pop_hist['population'].iloc[-1]
 print("Running traffic scenarios...")
 for _, parcel in parcels.iterrows():
     parcel_id = parcel['pid']
-    min_multi_family = parcel['min_multi_family'] if 'min_multi_family' in parcel else 0
+    min_multi_family = parcel.get('min_multi_family', 0) or 0
+    centroid = parcel['centroid']
+    distances_to_sensors = traffic.geometry.distance(centroid) / 1000
+    distances_to_rail = commuter_rail.geometry.distance(centroid)
+    nearest_rail_stop = commuter_rail.iloc[distances_to_rail.idxmin()]
+
     for pct in POP_PCT_OPTIONS:
-        scenario_id = str(uuid.uuid4())[:8]
         new_units = min_multi_family * (pct / 100)
         new_people = new_units * AVG_HH_SIZE
         new_trips = new_people * TRIPS_PER_PERSON
 
-        model_inputs.append({
-            "scenario_id": scenario_id,
-            "parcel_id": parcel_id,
-            "pop_increase_pct": pct,
-            "new_units": round(new_units, 2),
-            "new_people": round(new_people, 1),
-            "new_trips": round(new_trips, 1),
-            "use_type": parcel['use_type'],
-            "transit": parcel['transit'],
-            "sqft": parcel['sqft'],
-            "total_excluded": parcel['total_excluded']
-        })
+        for rail_pct in COMMUTER_RAIL_SPLITS:
+            highway_pct = 100 - rail_pct
+            scenario_id = str(uuid.uuid4())[:8] + f"_{rail_pct}"
+            rail_trips = new_trips * (rail_pct / 100)
+            highway_trips = new_trips * (highway_pct / 100)
 
-        centroid = parcel['centroid']
-        distances = traffic.geometry.distance(centroid)
-        distances_km = distances / 1000
-        weights = 1 / np.power(distances_km + 1e-6, ALPHA)
-        weights /= weights.sum()
-
-        for i, row in traffic.iterrows():
-            sensor_id = row['sensor_id']
-            func_class_code = pd.Series([row['functional_class']]).astype('category').cat.codes[0]
-            model = sensor_models.get(sensor_id)
-            added_trips = new_trips * weights.iloc[i]
-            weekday = 2  # Tuesday as representative day
-
-            if model:
-                pred_input = [[
-                    baseline_pop,
-                    weekday,
-                    func_class_code
-                ]]
-                baseline_pred = model.predict(pred_input)[0]
-            else:
-                baseline_pred = daily_traffic['volume'].mean()
-
-            pct_increase = (added_trips / baseline_pred) * 100 if baseline_pred > 0 else 0
-
-            model_outputs.append({
+            model_inputs.append({
                 "scenario_id": scenario_id,
-                "sensor_id": sensor_id,
-                "model": "RandomForest",
-                "weekday": weekday,
-                "added_trips": round(added_trips, 2),
-                "pct_increase": round(pct_increase, 2),
-                "distance_km": round(distances_km.iloc[i], 3),
-                "functional_class": row['functional_class']
+                "parcel_id": parcel_id,
+                "pop_increase_pct": pct,
+                "new_units": round(new_units, 2),
+                "new_people": round(new_people, 1),
+                "new_trips": round(new_trips, 1),
+                "rail_pct": rail_pct,
+                "rail_stop": nearest_rail_stop['stop_name'],
+                "use_type": parcel['use_type'],
+                "transit": parcel['transit'],
+                "sqft": parcel['sqft'],
+                "total_excluded": parcel['total_excluded']
             })
+
+            weights = 1 / np.power(distances_to_sensors + 1e-6, ALPHA)
+            weights /= weights.sum()
+            weekday = 2  # Tuesday
+
+            for i, row in traffic.iterrows():
+                sensor_id = row['sensor_id']
+                func_class_code = pd.Series([row['functional_class']]).astype('category').cat.codes[0]
+                model = sensor_models.get(sensor_id)
+                added_trips = highway_trips * weights.iloc[i]
+
+                if model:
+                    pred_input = [[
+                        baseline_pop,
+                        weekday,
+                        func_class_code,
+                        distances_to_sensors.iloc[i]
+                    ]]
+                    baseline_pred = model.predict(pred_input)[0]
+                else:
+                    baseline_pred = daily_traffic['volume'].mean()
+
+                pct_increase = (added_trips / baseline_pred) * 100 if baseline_pred > 0 else 0
+
+                model_outputs.append({
+                    "scenario_id": scenario_id,
+                    "sensor_id": sensor_id,
+                    "model": "RandomForest",
+                    "weekday": weekday,
+                    "added_trips": round(added_trips, 2),
+                    "pct_increase": round(pct_increase, 2),
+                    "distance_km": round(distances_to_sensors.iloc[i], 3),
+                    "functional_class": row['functional_class']
+                })
 
 print(f"Processed {len(model_inputs)} scenarios across {len(parcels)} parcels")
 
@@ -165,59 +192,3 @@ model_outputs_df = pd.DataFrame(model_outputs)
 model_inputs_df.to_csv("model_inputs_boxford_rf.csv", index=False)
 model_outputs_df.to_csv("model_outputs_boxford_rf.csv", index=False)
 print("Random Forest weekday-level model results with functional class and land classification saved.")
-
-# Function for user-defined parcel simulation
-
-def predict_traffic_for_parcel(parcel_id, pop_pct):
-    parcel = parcels[parcels['PID'] == parcel_id].iloc[0]
-    min_multi_family = parcel['min_multi_family']
-    new_units = min_multi_family * (pop_pct / 100)
-    new_people = new_units * AVG_HH_SIZE
-    new_trips = new_people * TRIPS_PER_PERSON
-
-    print(f"\nSelected Parcel: {parcel_id}")
-    print(f"  - Use Type: {parcel['use_type']}")
-    print(f"  - Transit Access: {parcel['transit']}")
-    print(f"  - New Units: {round(new_units, 2)}")
-    print(f"  - New Trips: {round(new_trips, 1)}")
-
-    centroid = parcel['centroid']
-    distances = traffic.geometry.distance(centroid)
-    distances_km = distances / 1000
-    weights = 1 / np.power(distances_km + 1e-6, ALPHA)
-    weights /= weights.sum()
-
-    predictions = []
-    weekday = 2  # Tuesday
-
-    for i, row in traffic.iterrows():
-        sensor_id = row['sensor_id']
-        func_class_code = pd.Series([row['functional_class']]).astype('category').cat.codes[0]
-        model = sensor_models.get(sensor_id)
-        added_trips = new_trips * weights.iloc[i]
-
-        if model:
-            pred_input = [[
-                baseline_pop,
-                weekday,
-                func_class_code
-            ]]
-            baseline_pred = model.predict(pred_input)[0]
-        else:
-            baseline_pred = daily_traffic['volume'].mean()
-
-        pct_increase = (added_trips / baseline_pred) * 100 if baseline_pred > 0 else 0
-
-        predictions.append({
-            "sensor_id": sensor_id,
-            "added_trips": round(added_trips, 2),
-            "pct_increase": round(pct_increase, 2),
-            "distance_km": round(distances_km.iloc[i], 3),
-            "functional_class": row['functional_class']
-        })
-
-    return pd.DataFrame(predictions)
-
-# Example usage:
-# test_predictions = predict_traffic_for_parcel('BOX12345', 15)
-# print(test_predictions)

@@ -41,7 +41,6 @@ def load_data():
     parcels = parcels.to_crs(epsg=4326)
     parcels['lon'] = parcels.centroid.x
     parcels['lat'] = parcels.centroid.y
-    print(parcels)
 
     traffic = gpd.read_postgis(
         f"""
@@ -52,17 +51,31 @@ def load_data():
         engine,
         geom_col="geometry"
     )
-
     traffic = traffic.to_crs(epsg=4326)
     traffic['lon'] = traffic.geometry.x
     traffic['lat'] = traffic.geometry.y
 
+    rail_stops = gpd.read_postgis(
+        sql="SELECT stop_name, line_id, geometry FROM general_data.commuter_rail_stops",
+        con=engine,
+        geom_col='geometry'
+    )
+
+    # Make sure it's in correct CRS
+    rail_stops.set_crs(epsg=26986, allow_override=True, inplace=True)
+    rail_stops = rail_stops.to_crs(epsg=4326)
+    rail_stops['lat'] = rail_stops.geometry.y
+    rail_stops['lon'] = rail_stops.geometry.x
+
+
+
+
     merged = outputs.merge(inputs, on="scenario_id")
     merged = merged.merge(traffic[['sensor_id', 'lon', 'lat']], on="sensor_id", how="left")
 
-    return parcels, merged
+    return parcels, merged, rail_stops
 
-parcels_df, traffic_df = load_data()
+parcels_df, traffic_df, rail_stops = load_data()
 
 st.title("Boxford Traffic Impact Simulator")
 st.sidebar.header("User Controls")
@@ -70,11 +83,13 @@ st.sidebar.header("User Controls")
 parcel_ids = parcels_df['pid'].tolist()
 selected_parcel_id = st.sidebar.selectbox("Select Parcel", parcel_ids)
 selected_pct = st.sidebar.selectbox("Select % Housing Increase", sorted(traffic_df['pop_increase_pct'].unique()))
+selected_rail_pct = st.sidebar.selectbox("Select % Using MBTA Commuter Rail", sorted(traffic_df['rail_pct'].unique()))
 
-# Filter predictions for selected parcel and percent
+# Filter predictions for selected parcel and settings
 predictions_df = traffic_df[
     (traffic_df['parcel_id'] == selected_parcel_id) &
-    (traffic_df['pop_increase_pct'] == selected_pct)
+    (traffic_df['pop_increase_pct'] == selected_pct) &
+    (traffic_df['rail_pct'] == selected_rail_pct)
 ].copy()
 
 # --- Map Visualization ---
@@ -121,6 +136,15 @@ parcel_layer = pdk.Layer(
     pickable=True,
     get_line_width=4,
 )
+print("rail stops",rail_stops)
+rail_layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=rail_stops,
+    get_position='[lon, lat]',
+    get_fill_color='[0, 0, 255, 180]',  # Blue color with slight transparency
+    get_radius=400,
+    pickable=True,
+)
 
 view_state = pdk.ViewState(
     latitude=selected_parcel['lat'].values[0],
@@ -130,7 +154,7 @@ view_state = pdk.ViewState(
 )
 
 st.pydeck_chart(pdk.Deck(
-    layers=[sensor_layer, parcel_layer],
+    layers=[sensor_layer, parcel_layer, rail_layer],
     initial_view_state=view_state,
     tooltip={
         "html": """
