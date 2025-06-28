@@ -73,9 +73,24 @@ def load_data():
     merged = outputs.merge(inputs, on="scenario_id")
     merged = merged.merge(traffic[['sensor_id', 'lon', 'lat']], on="sensor_id", how="left")
 
-    return parcels, merged, rail_stops
+    town_geom = gpd.read_postgis(
+        f"""
+        SELECT town_name, geom as geometry
+        FROM general_data.town_nameplate
+        WHERE town_name = '{TOWN}'
+        """,
+        engine,
+        geom_col="geometry"
+    )
 
-parcels_df, traffic_df, rail_stops = load_data()
+    if town_geom.crs is None:
+        town_geom.set_crs(epsg=26986, inplace=True)
+
+    town_geom = town_geom.to_crs(epsg=4326)
+
+    return parcels, merged, rail_stops, town_geom
+
+parcels_df, traffic_df, rail_stops, town_geom = load_data()
 
 st.title("Boxford Traffic Impact Simulator")
 st.sidebar.header("User Controls")
@@ -146,6 +161,27 @@ rail_layer = pdk.Layer(
     pickable=True,
 )
 
+town_geojson = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": mapping(town_geom.iloc[0].geometry),
+            "properties": {
+                "town_name": TOWN
+            }
+        }
+    ]
+}
+
+town_layer = pdk.Layer(
+    "GeoJsonLayer",
+    data=town_geojson,
+    get_fill_color='[0, 0, 0, 0]',  # Transparent fill
+    get_line_color='[0, 0, 0]',    # Black outline
+    line_width_min_pixels=2,
+)
+
 view_state = pdk.ViewState(
     latitude=selected_parcel['lat'].values[0],
     longitude=selected_parcel['lon'].values[0],
@@ -154,7 +190,7 @@ view_state = pdk.ViewState(
 )
 
 st.pydeck_chart(pdk.Deck(
-    layers=[sensor_layer, parcel_layer, rail_layer],
+    layers=[sensor_layer, parcel_layer, rail_layer, town_layer],
     initial_view_state=view_state,
     tooltip={
         "html": """
