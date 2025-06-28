@@ -3,6 +3,9 @@ import geopandas as gpd
 import streamlit as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import json
+from shapely.geometry import mapping
+
 
 TOWN = "Boxford"
 st.set_page_config(layout="wide")
@@ -106,7 +109,17 @@ else:
     import plotly.express as px
 
     # Prepare data for plotting
-    selected_parcel = parcels_df[parcels_df['pid'] == selected_parcel_id].iloc[0]
+    selected = parcels_df[parcels_df['pid'] == selected_parcel_id].iloc[0]
+
+    selected_parcel_geojson = {
+        "type": "Feature",
+        "geometry": mapping(selected.geometry),
+        "properties": {
+            "pid": selected.pid,
+            "sqft": selected.sqft,
+            "use_type": selected.use_type
+        }
+    }
 
     # Compute marker size scaled by pct_increase
     max_pct = predictions_df['pct_increase'].max()
@@ -137,22 +150,6 @@ else:
         title=f"Traffic Sensors Predicted Increase for Parcel {selected_parcel_id}"
     )
 
-    # Parcel marker — bigger, bright blue star
-    fig.add_scattermapbox(
-        lat=[selected_parcel.lat],
-        lon=[selected_parcel.lon],
-        mode='markers+text',
-        marker=dict(
-            size=30,
-            color='blue',
-            opacity=0.9
-        ),
-        text=[f"Parcel {selected_parcel_id}"],
-        textposition="top right",
-        name='Selected Parcel',
-        hoverinfo='text',
-    )
-
     # Rail stops markers — medium size, dark blue diamond
     fig.add_scattermapbox(
         lat=rail_stops['lat'],
@@ -172,10 +169,49 @@ else:
     fig.update_layout(
         height=600,
         mapbox_zoom=13,
-        mapbox_center={"lat": selected_parcel.lat, "lon": selected_parcel.lon},
+        mapbox_center={"lat": selected.lat, "lon": selected.lon},
         mapbox_style="open-street-map",
         margin={"r":0,"t":20,"l":0,"b":0},
     )
+
+    fig.update_layout(
+        mapbox=dict(
+            style="open-street-map",
+            center={"lat": selected.lat, "lon": selected.lon},
+            zoom=13,
+            layers=[
+                dict(
+                    sourcetype="geojson",
+                    source=selected_parcel_geojson,
+                    type="fill",
+                    color="rgba(0, 100, 255, 0.4)",
+                    below="traces"
+                ),
+                dict(
+                    sourcetype="geojson",
+                    source=selected_parcel_geojson,
+                    type="line",
+                    color="blue",
+                    line={"width": 3},
+                    below="traces"
+                )
+            ]
+        )
+    )
+    fig.add_scattermapbox(
+        lat=[selected.lat],
+        lon=[selected.lon],
+        mode='markers',
+        marker=dict(size=1, color='rgba(0,0,0,0)'),  # invisible marker
+        hovertemplate=(
+            "<b>Parcel ID:</b> %{customdata[0]}<br>" +
+            "<b>Sqft:</b> %{customdata[1]:,.0f}<br>" +
+            "<b>Use Type:</b> %{customdata[2]}"
+        ),
+        customdata=[[selected.pid, selected.sqft, selected.use_type]],
+        name='Parcel Info'
+    )
+
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Predicted Traffic Impacts")
