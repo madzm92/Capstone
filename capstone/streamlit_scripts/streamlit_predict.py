@@ -212,7 +212,7 @@ else:
         marker=dict(size=1, color='rgba(0,0,0,0)'),
         name='Parcel Info',
         hovertext=rail_stops.apply(
-            lambda r: f"<b>Commuter Rail Stop Info</b><br>Rail Stop: {selected.pid}<br>Sqft: {selected.sqft}<br>Use Type: {selected.use_type}", axis=1),
+            lambda r: f"<b>Parcel Info</b><br>Parcel ID: {selected.pid}<br>Sqft: {selected.sqft}<br>Use Type: {selected.use_type}", axis=1),
         hoverinfo='text',
     )
 
