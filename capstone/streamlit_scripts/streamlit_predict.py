@@ -129,6 +129,12 @@ else:
 
     predictions_df['marker_size'] = predictions_df['pct_increase'].apply(scale_size)
 
+    predictions_df["hover_info"] = (
+        "<b>Traffic Sensor Info</b><br>"+
+        "Sensor ID: " + predictions_df["sensor_id"].astype(str) + "<br>" +
+        "Increase: " + predictions_df["pct_increase"].map("{:.2f}%".format) + "<br>" +
+        "Class: " + predictions_df["functional_class"].astype(str)
+    )
     # Color scale (red for higher increase)
     fig = px.scatter_mapbox(
         predictions_df,
@@ -139,15 +145,16 @@ else:
         color_continuous_scale="RdYlGn_r",
         size_max=20,
         zoom=1,
-        hover_name="sensor_id",
-        hover_data={
-            "pct_increase": ':.2f',
-            "functional_class": True,
-            "lat": False,
-            "lon": False,
-            "marker_size": False,
-        },
+        text='hover_info',
         title=f"Traffic Sensors Predicted Increase for Parcel {selected_parcel_id}"
+    )
+
+    fig.update_traces(hovertemplate="%{text}", mode="markers")
+
+    rail_hover_text = (
+        "<b>Commuter Rail Stop Info</b><br>"+
+        "Stop Name: " + rail_stops["stop_name"].astype(str) + "<br>" +
+        "Line ID: " + rail_stops["line_id"].astype(str) + "<br>"
     )
 
     # Rail stops markers — medium size, dark blue diamond
@@ -161,8 +168,7 @@ else:
             opacity=0.8
         ),
         name='Rail Stops',
-        hovertext=rail_stops.apply(
-            lambda r: f"Rail Stop: {r['stop_name']}<br>Line: {r['line_id']}", axis=1),
+        hovertext=rail_hover_text,
         hoverinfo='text'
     )
 
@@ -198,18 +204,16 @@ else:
             ]
         )
     )
+
     fig.add_scattermapbox(
         lat=[selected.lat],
         lon=[selected.lon],
-        mode='markers',
-        marker=dict(size=1, color='rgba(0,0,0,0)'),  # invisible marker
-        hovertemplate=(
-            "<b>Parcel ID:</b> %{customdata[0]}<br>" +
-            "<b>Sqft:</b> %{customdata[1]:,.0f}<br>" +
-            "<b>Use Type:</b> %{customdata[2]}"
-        ),
-        customdata=[[selected.pid, selected.sqft, selected.use_type]],
-        name='Parcel Info'
+        mode='markers+text',
+        marker=dict(size=1, color='rgba(0,0,0,0)'),
+        name='Parcel Info',
+        hovertext=rail_stops.apply(
+            lambda r: f"<b>Commuter Rail Stop Info</b><br>Rail Stop: {selected.pid}<br>Sqft: {selected.sqft}<br>Use Type: {selected.use_type}", axis=1),
+        hoverinfo='text',
     )
 
     st.plotly_chart(fig, use_container_width=True)
