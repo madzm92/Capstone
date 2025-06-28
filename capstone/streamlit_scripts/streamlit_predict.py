@@ -5,6 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 TOWN = "Boxford"
+st.set_page_config(layout="wide")
+
 
 # Database setup
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
@@ -167,15 +169,13 @@ else:
         hoverinfo='text'
     )
 
-
-    # Update layout for mapbox
     fig.update_layout(
-        mapbox_center={"lat": selected_parcel.lat, "lon": selected_parcel.lon},
+        height=600,
         mapbox_zoom=13,
+        mapbox_center={"lat": selected_parcel.lat, "lon": selected_parcel.lon},
         mapbox_style="open-street-map",
-        margin={"r":0,"t":30,"l":0,"b":0},
+        margin={"r":0,"t":20,"l":0,"b":0},
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Predicted Traffic Impacts")
