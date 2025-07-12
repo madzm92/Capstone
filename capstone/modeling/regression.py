@@ -18,6 +18,30 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+
+land_use_weights = {
+    'Residential: Single Family': 0.3,
+    'Residential: Multi-Family': 0.5,
+    'School/Education': 0.6,
+    'Healthcare': 0.4,
+    'Institutional/Charitable': 0.3,
+    'Commercial: Retail': 0.4,
+    'Commercial: Office': 0.2,
+    'Hotels/Hospitality': 0.3,
+    'Industrial': 0.1,
+    'Utilities': 0.05,
+    'Transportation': 0.05,
+    'Recreational: Public': 0.3,
+    'Recreational: Private': 0.2,
+    'Religious': 0.2,
+    'Government': 0.25,
+    'Mixed Use': 0.35,
+    'Vacant': 0.0,
+    'Other': 0.0
+}
+
+
+
 # --- Load sensor, population, and traffic data ---
 print("Loading base data...")
 traffic = gpd.read_postgis(
@@ -138,14 +162,31 @@ sensor_buffer = traffic[['sensor_id', 'geom']].copy()
 sensor_buffer = sensor_buffer.set_geometry('geom')
 sensor_buffer['geometry'] = sensor_buffer.buffer(500)
 
-sensor_landuse = gpd.sjoin(land_use, sensor_buffer, predicate='intersects')
+sensor_landuse = gpd.sjoin_nearest(sensor_buffer, land_use, how='left', distance_col='dist_to_landuse')
 landuse_counts = (
     sensor_landuse.groupby(['sensor_id', 'grouped']).size()
     .unstack(fill_value=0)
     .reset_index()
 )
-breakpoint()
+# Assume landuse_counts is a DataFrame where columns are land use group names and values are counts or presence (0/1)
+
+# Multiply each column by its weight
+for col in landuse_counts.columns:
+    # convert column to numeric, coerce errors to NaN, then fill NaN with 0
+    landuse_counts[col] = pd.to_numeric(landuse_counts[col], errors='coerce').fillna(0)
+    
+    if col in land_use_weights:
+        landuse_counts[col + "_weighted"] = landuse_counts[col] * land_use_weights[col]
+    else:
+        landuse_counts[col + "_weighted"] = landuse_counts[col] * land_use_weights["Other"]
+
+landuse_counts["landuse_weighted_score"] = sum(
+    landuse_counts[col] * weight for col, weight in land_use_weights.items()
+)
+
 # --- Join into modeling data ---
+samples_df['sensor_id'] = samples_df['sensor_id'].astype(str)
+landuse_counts['sensor_id'] = landuse_counts['sensor_id'].astype(str)
 samples_df = samples_df.merge(landuse_counts, on='sensor_id', how='left')
 samples_df.fillna(0, inplace=True)
 
@@ -156,9 +197,12 @@ base_features = [
     'log_pop_start', 'log_traffic_start', 'year_gap'
 ]
 landuse_cols = list(set(landuse_counts.columns) - {'sensor_id'})
-samples_df['land_use_missing'] = samples_df[landuse_cols].sum(axis=1) == 0
 
-features = base_features + landuse_cols
+# --- Split into two datasets ---
+df_with_landuse = samples_df[samples_df[landuse_cols].sum(axis=1) > 0].copy()
+df_without_landuse = samples_df[samples_df[landuse_cols].sum(axis=1) == 0].copy()
+
+features = base_features + ['landuse_weighted_score']
 
 X = samples_df[features]
 y = samples_df['traffic_pct_change']
