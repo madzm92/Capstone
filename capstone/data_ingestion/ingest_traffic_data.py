@@ -75,18 +75,17 @@ def ingest_traffic_nameplate(session):
     traffic_nameplate_df.set_crs(epsg=4326, inplace=True)
 
     # save to file & DB for safe keeping
-    result_df.to_excel('traffic_data/filtered_traffic_locations_list.xlsx')
-    traffic_nameplate_df.to_postgis(name='traffic_nameplate', con=engine, if_exists='append', index=False, schema='general_data')
+    # result_df.to_excel('traffic_data/filtered_traffic_locations_list.xlsx')
+    # traffic_nameplate_df.to_postgis(name='traffic_nameplate', con=engine, if_exists='append', index=False, schema='general_data')
 
     return traffic_nameplate_df
 
-def ingest_traffic_data(traffic_nameplate_df: pd.DataFrame, engine):
+def ingest_traffic_data(traffic_nameplate_df: pd.DataFrame, engine, filepath):
     """Read data from file that includes web scraped traffic instances.
     Rename columns, and validate that the location ids exist in the traffic_nameplate table (fk relationship).
     Insert data into traffic_counts table"""
     all = pd.DataFrame()
     # Load the uploaded Excel file again
-    file_path = ["traffic_data/boxford_traffic_data.xlsx","traffic_data/boxford_traffic_data_2.xlsx","traffic_data/boxford_traffic_data_3.xlsx"]
     for file in file_path:
         traffic_data_df= pd.read_excel(file, sheet_name=0, header=0)
         traffic_data_df['start_date_time'] = pd.to_datetime(traffic_data_df['Date'].astype(str) + " " + traffic_data_df['Time'].str[:5] + ":00")
@@ -104,11 +103,13 @@ def ingest_traffic_data(traffic_nameplate_df: pd.DataFrame, engine):
         all = pd.concat([all, traffic_data_filtered_df])
 
     all = all.drop_duplicates(keep='last')
+    breakpoint()
     all.to_sql('traffic_counts', engine, schema='general_data', if_exists='append', index=False)
 
 if __name__ == '__main__':
     db_url = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
     with DatabaseConnection(db_url) as session:
         engine = create_engine(db_url)
+        file_path = ["traffic_data/traffic_data_class_7_5.xlsx"]
         traffic_nameplate_df = ingest_traffic_nameplate(session)
-        ingest_traffic_data(traffic_nameplate_df, engine)
+        ingest_traffic_data(traffic_nameplate_df, engine, file_path)

@@ -32,9 +32,12 @@ go_to_search_page()
 original_window = driver.current_window_handle
 
 # For testing, use a small sample or 1 location ID
-loc_ids = ['M4003S']
+loc_ids_df = pd.read_excel('class_7_ids.xlsx', header=1)
+loc_ids = loc_ids_df['Id'].tolist()
 
 for loc_id in loc_ids:
+    # only use if value is in 90's
+    # loc_id = '0'+str(loc_id)
     print(f"\n🔍 Processing Loc ID: {loc_id}")
     all_links = []
     seen_links = set()
@@ -116,7 +119,7 @@ for loc_id in loc_ids:
                 new_on_page += 1
         print(f"len of list {len(all_links)}")
         save_list = pd.DataFrame(all_links,columns=['links'])
-        filename = 'links/'+loc_id+'_'+'all_links.xlsx'
+        filename = 'links/'+str(loc_id)+'_'+'all_links.xlsx'
         save_list.to_excel(filename)
         # Check if the link count has changed
         if len(all_links) == last_link_count:

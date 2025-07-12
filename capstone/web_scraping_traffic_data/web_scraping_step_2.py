@@ -33,49 +33,49 @@ def go_to_search_page():
 # Load initial search page
 go_to_search_page()
 
-links_df = pd.read_excel('all_links.xlsx')
-all_links = links_df['links'].tolist()
+for filename in os.listdir('links'):
+    links_df = pd.read_excel('links/'+filename)
+    all_links = links_df['links'].tolist()
 
-# Use Selenium cookies in requests session
-selenium_cookies = driver.get_cookies()
-session = requests.Session()
-for cookie in selenium_cookies:
-    session.cookies.set(cookie['name'], cookie['value'])
+    # Use Selenium cookies in requests session
+    selenium_cookies = driver.get_cookies()
+    session = requests.Session()
+    for cookie in selenium_cookies:
+        session.cookies.set(cookie['name'], cookie['value'])
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    for idx, detail_url in enumerate(all_links):
+        try:
+            print(f"🌐 [{idx}] Getting detail page: {detail_url}")
+            res = session.get(detail_url, headers=headers, allow_redirects=True)
+            if res.status_code != 200:
+                print(f"❌ Failed to load detail page: {detail_url} - Status: {res.status_code}")
+                continue
 
-for idx, detail_url in enumerate(all_links):
-    try:
-        print(f"🌐 [{idx}] Getting detail page: {detail_url}")
-        res = session.get(detail_url, headers=headers, allow_redirects=True)
-        if res.status_code != 200:
-            print(f"❌ Failed to load detail page: {detail_url} - Status: {res.status_code}")
-            continue
+            soup = BeautifulSoup(res.text, "html.parser")
+            excel_a_tag = soup.select_one("ul.btnTCnt li a[href*='rpt_volume_count.aspx']")
 
-        soup = BeautifulSoup(res.text, "html.parser")
-        excel_a_tag = soup.select_one("ul.btnTCnt li a[href*='rpt_volume_count.aspx']")
+            if not excel_a_tag:
+                print(f"❌ Excel download link not found for: {detail_url}")
+                continue
 
-        if not excel_a_tag:
-            print(f"❌ Excel download link not found for: {detail_url}")
-            continue
+            # Construct full Excel file URL
+            excel_href = excel_a_tag["href"]
+            if not excel_href.startswith("http"):
+                excel_href = f"{BASE_URL}{excel_href}"
 
-        # Construct full Excel file URL
-        excel_href = excel_a_tag["href"]
-        if not excel_href.startswith("http"):
-            excel_href = f"{BASE_URL}{excel_href}"
+            # Use same session to download file
+            file_res = session.get(excel_href, headers=headers, allow_redirects=True)
+            if file_res.status_code == 200:
+                file = f"{filename[:-5]}_{idx}.xlsx"
+                filepath = os.path.join("downloads", file)
+                with open(filepath, "wb") as f:
+                    f.write(file_res.content)
+                print(f"✅ Downloaded: {file}")
+            else:
+                print(f"❌ Failed to download Excel file: {excel_href} - Status: {file_res.status_code}")
 
-        # Use same session to download file
-        file_res = session.get(excel_href, headers=headers, allow_redirects=True)
-        if file_res.status_code == 200:
-            filename = f"file_{idx}.xls"
-            filepath = os.path.join("downloads", filename)
-            with open(filepath, "wb") as f:
-                f.write(file_res.content)
-            print(f"✅ Downloaded: {filename}")
-        else:
-            print(f"❌ Failed to download Excel file: {excel_href} - Status: {file_res.status_code}")
-
-    except Exception as e:
-        print(f"❌ Exception on {detail_url}: {e}")
+        except Exception as e:
+            print(f"❌ Exception on {detail_url}: {e}")
