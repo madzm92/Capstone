@@ -28,20 +28,28 @@ def insert_commuter_rail_line_data(mbta_rte_df):
     mbta_rte_df.iloc[4, mbta_rte_df.columns.get_loc("line_name")] = 'Middleborough/Lakeville (P)'
     mbta_rte_df.iloc[7, mbta_rte_df.columns.get_loc("line_name")] = 'Franklin/Foxboro'
 
-    mbta_rte_df.to_sql(
-        'commuter_rail_line',
-        engine,
-        schema='general_data',
-        if_exists='append',
-        index=False,
-        dtype=dtype  # Use GeoAlchemy2 Geometry type for the geometry column
-    )
+    # mbta_rte_df.to_sql(
+    #     'commuter_rail_line',
+    #     engine,
+    #     schema='general_data',
+    #     if_exists='append',
+    #     index=False,
+    #     dtype=dtype  # Use GeoAlchemy2 Geometry type for the geometry column
+    # )
 
 
 def wrangle_trip_data():
     #get CommuterRailTrips data
     mbta_trip_df = pd.read_csv("mbta_data/MBTA_Commuter_Trips_mass_dot.csv")
     mbta_trip_df = mbta_trip_df.rename(columns={"stop_id":"stop_name", "stop_time":"stop_datetime", "route_name":"line_name", "stopsequence":"stop_sequence"})
+
+    mbta_trip_df_2012 = mbta_trip_df[mbta_trip_df['season'] == 'Spring 2012']
+    mbta_trip_df_2012['stop_datetime'] = mbta_trip_df_2012['stop_datetime'].apply(lambda x: '2012' + x[4:])
+
+    #drop original rows
+    mbta_trip_df = mbta_trip_df[mbta_trip_df['season'] != 'Spring 2012']
+    mbta_trip_df = pd.concat([mbta_trip_df, mbta_trip_df_2012], ignore_index=True)
+
     return mbta_trip_df
 
 def wrangle_stop_data(shapefile_base_dir):
@@ -72,14 +80,14 @@ def insert_commuter_rail_stop_data(mbta_stops_new_df):
     dtype = {
         "geometry": GeoAlchemyGeometry("POINT", srid=2249)
     }
-    mbta_stops_new_df.to_sql(
-        'commuter_rail_stops',
-        engine,
-        schema='general_data',
-        if_exists='append',
-        index=False,
-        dtype=dtype  # Use GeoAlchemy2 Geometry type for the geometry column
-    )
+    # mbta_stops_new_df.to_sql(
+    #     'commuter_rail_stops',
+    #     engine,
+    #     schema='general_data',
+    #     if_exists='append',
+    #     index=False,
+    #     dtype=dtype  # Use GeoAlchemy2 Geometry type for the geometry column
+    # )
 
 def insert_commuter_rail_trip_data(mbta_trip_df):
     #insert data into tables: commuter_rail_line, commuter_rail_stops, commuter_rail_trips
@@ -96,7 +104,7 @@ def insert_commuter_rail_trip_data(mbta_trip_df):
     mbta_trip_df.drop_duplicates(inplace=True, subset=['stop_name', 'stop_datetime', 'direction_id'])
     mbta_trip_df['line_name'] = mbta_trip_df['stop_name'].replace({"Readville":"South Coast"})
     mbta_trip_df.drop(columns=['stop_name', 'line_name'], inplace=True)
-
+    breakpoint()
     mbta_trip_df.to_sql('commuter_rail_trips', engine, schema='general_data', if_exists='append', index=False)
 
 #DB Set Up: move to seperate file
@@ -183,7 +191,6 @@ mbta_trip_df = mbta_trip_df[['stop_name', 'stop_datetime', 'direction_id', 'aver
 
 #TODO: fix date issues!!!!!!
 mbta_trip_df['stop_datetime'] = pd.to_datetime(mbta_trip_df['stop_datetime'], format='%Y/%m/%d %H:%M:%S%z')
-
 
 insert_commuter_rail_line_data(mbta_rte_df)
 
