@@ -25,7 +25,8 @@ dependencies = [
     "seaborn (>=0.13.2,<0.14.0)",
     "xgboost (>=3.0.2,<4.0.0)",
     "folium (>=0.20.0,<0.21.0)",
-    "streamlit-folium (>=0.25.0,<0.26.0)"
+    "streamlit-folium (>=0.25.0,<0.26.0)",
+    "lightgbm (>=4.6.0,<5.0.0)"
 ]
 
 [tool.poetry]
