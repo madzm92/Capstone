@@ -110,13 +110,15 @@ mbta_stops = gpd.read_postgis(
 
 print("Loading MBTA trip data for 2018...")
 mbta_trips = pd.read_sql("""
-    SELECT stop_id, direction_id as direction, average_ons, average_offs
+    SELECT stop_id,stop_datetime, direction_id as direction, average_ons, average_offs
     FROM general_data.commuter_rail_trips
-    WHERE stop_datetime::date BETWEEN '2018-06-01' AND '2018-06-02'
 """, engine)
 
-mbta_agg = mbta_trips.groupby('stop_id')[['average_ons', 'average_offs']].sum().reset_index()
+mbta_trips['year'] = mbta_trips['stop_datetime'].dt.year.replace({2024: 2023})  # Treat Jan 2024 as 2023
+
+mbta_agg = (mbta_trips.groupby(['stop_id', 'year'])[['average_ons', 'average_offs']].sum().reset_index())
 mbta_agg['mbta_usage'] = mbta_agg['average_ons'] + mbta_agg['average_offs']
+
 mbta_stops = mbta_stops.merge(mbta_agg[['stop_id', 'mbta_usage']], on='stop_id', how='left')
 
 # Prepare geometries
@@ -137,13 +139,16 @@ sensor_features = distance_join[['sensor_id', 'dist_to_mbta_stop', 'mbta_usage']
 samples_df = samples_df.merge(sensor_features, on='sensor_id', how='left')
 samples_df.fillna(0, inplace=True)
 
+# --- One-hot encode functional_class ---
+samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
+
 # --- Modeling ---
 print("Running models...")
 features = [
     'pop_pct_change', 'pop_start', 'traffic_start',
     'log_pop_start', 'log_traffic_start', 'year_gap',
-    'dist_to_mbta_stop'
-]
+    'dist_to_mbta_stop', 'mbta_usage'
+] + [col for col in samples_df.columns if col.startswith('func_class_')]
 
 X = samples_df[features]
 y = samples_df['traffic_pct_change']
@@ -155,9 +160,6 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
 print("\nLinear Regression:")
-print("Feature columns used in model:", features)
-print("Model coefficients:", model.coef_)
-print("Intercept:", model.intercept_)
 print(f"MAE: {mean_absolute_error(y_test, y_pred):.4f}, RMSE: {np.sqrt(mean_squared_error(y_test, y_pred)):.4f}")
 
 # Random Forest
