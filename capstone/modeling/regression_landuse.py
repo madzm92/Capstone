@@ -63,7 +63,7 @@ traffic = gpd.read_postgis(
     """
     SELECT location_id as sensor_id, town_name, functional_class, geom
     FROM general_data.traffic_nameplate
-    WHERE functional_class = '(7) Local Road or Street'
+    WHERE functional_class = '(5) Major Collector'
     """,
     engine,
     geom_col="geom"
@@ -73,7 +73,7 @@ traffic_hist = pd.read_sql("""
     SELECT tn.location_id as sensor_id, tc.start_date_time as timestamp, tc.hourly_count as volume
     FROM general_data.traffic_nameplate tn  
     LEFT JOIN general_data.traffic_counts tc ON tn.location_id = tc.location_id
-    WHERE tn.functional_class = '(7) Local Road or Street'
+    WHERE tn.functional_class = '(5) Major Collector'
 """, engine)
 
 pop_hist = pd.read_sql("""
