@@ -33,7 +33,8 @@ def go_to_search_page():
 # Load initial search page
 go_to_search_page()
 
-for filename in os.listdir('links'):
+# for filename in os.listdir('links'):
+for filename in ['RPA10-293-00021_all_links.xlsx', '3372829_all_links.xlsx', '232414_all_links.xlsx', '220608_all_links.xlsx', '237175_all_links.xlsx', 'RPA05-321-1762_all_links.xlsx', '3080_all_links.xlsx', 'RPA10-167-00018_all_links.xlsx', 'M4005N_all_links.xlsx', '6225_all_links.xlsx', 'RPA10-167-00012_all_links.xlsx', '238540_all_links.xlsx', 'RPA10-250-00001_all_links.xlsx', 'RPA05-328-3157_all_links.xlsx', 'RPA05-271-3010_all_links.xlsx', 'RPA05-321-3146_all_links.xlsx', 'R22004_all_links.xlsx', '221021_all_links.xlsx', 'R21001_all_links.xlsx', 'R12229_all_links.xlsx', '235728_all_links.xlsx', 'RPA05-017-3159_all_links.xlsx', 'R26018_all_links.xlsx', 'RPA05-271-3066_all_links.xlsx', 'R21582_all_links.xlsx', '235732_all_links.xlsx', 'RPA05-321-3149_all_links.xlsx', 'R22003_all_links.xlsx', 'RPA10-247-00007_all_links.xlsx', 'RPA05-215-709_all_links.xlsx', '218006_all_links.xlsx', 'R13097_all_links.xlsx', 'S17-048-176-05_all_links.xlsx', 'R21007_all_links.xlsx', 'RPA10-293-000010_all_links.xlsx', 'R13195_all_links.xlsx', 'RPA06-160-1024_all_links.xlsx', '236825_all_links.xlsx', 'R23004_all_links.xlsx', '237098_all_links.xlsx', '236635_all_links.xlsx', 'RPA05-321-3148_all_links.xlsx', '236322_all_links.xlsx', 'RPA06-160-340_all_links.xlsx', 'S18-006-189-04_all_links.xlsx', 'R22010_all_links.xlsx', 'M4008W_all_links.xlsx', '6226_all_links.xlsx', 'R26019_all_links.xlsx', 'RPA05-017-3158_all_links.xlsx', 'R23003_all_links.xlsx', 'R13017_all_links.xlsx', '7019_all_links.xlsx']:
     links_df = pd.read_excel('links/'+filename)
     all_links = links_df['links'].tolist()
 

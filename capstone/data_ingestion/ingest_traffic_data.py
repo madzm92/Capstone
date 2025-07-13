@@ -110,6 +110,6 @@ if __name__ == '__main__':
     db_url = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
     with DatabaseConnection(db_url) as session:
         engine = create_engine(db_url)
-        file_path = ["traffic_data/traffic_data_class_7_5.xlsx"]
+        file_path = ["traffic_data/traffic_data_class_5_4.xlsx"]
         traffic_nameplate_df = ingest_traffic_nameplate(session)
         ingest_traffic_data(traffic_nameplate_df, engine, file_path)
