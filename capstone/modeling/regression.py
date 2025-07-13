@@ -3,21 +3,18 @@ import geopandas as gpd
 from sqlalchemy import create_engine
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import numpy as np
 from sqlalchemy.orm import sessionmaker
+from xgboost import XGBRegressor
+
 
 # Set up the SQLAlchemy engine and session
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
 Session = sessionmaker(bind=engine)
 session = Session()
-import geopandas as gpd
-import pandas as pd
-import numpy as np
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-
 
 land_use_weights = {
     'Residential: Single Family': 0.3,
@@ -204,89 +201,76 @@ df_without_landuse = samples_df[samples_df[landuse_cols].sum(axis=1) == 0].copy(
 
 features = base_features + ['landuse_weighted_score']
 
-# ~~~~~~~Regression~~~~~~~~~
-# X = samples_df[features]
-# y = samples_df['traffic_pct_change']
-
-# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# model = LinearRegression()
-# model.fit(X_train, y_train)
-# y_pred = model.predict(X_test)
-
-# mae = mean_absolute_error(y_test, y_pred)
-# rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-
-# print("Feature columns used in model:", features)
-# print("Model coefficients:", model.coef_)
-# print("Intercept:", model.intercept_)
-# print(f"MAE: {mae:.4f}, RMSE: {rmse:.4f}")
-# coef_df = pd.DataFrame({
-#     'feature': features,
-#     'coefficient': model.coef_
-# })
-# coef_df.loc[len(coef_df.index)] = ['intercept', model.intercept_]
-# coef_df.to_csv("model_coefficients.csv", index=False)
-
-# # --- Save predictions ---
-# results_df = pd.DataFrame({
-#     'sensor_id': X_test.index,  # assumes X_test preserves sensor index
-#     'predicted_traffic_pct_change': y_pred,
-#     'actual_traffic_pct_change': y_test.values
-# })
-# results_df.to_csv("model_predictions.csv", index=False)
-
-# # --- Save full dataset with predictions (optional) ---
-# samples_df['predicted_traffic_pct_change'] = model.predict(X)
-# samples_df.to_csv("samples_with_predictions.csv", index=False)
-
-# print("Exported model results to CSV.")
-
-# # ~~~~~~~Random Forest~~~~~~~~~
-# from sklearn.ensemble import RandomForestRegressor
-
-# X = samples_df[features]
-# y = samples_df['traffic_pct_change']
-
-# # Split train/test (80/20)
-# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# # Fit Random Forest
-# rf = RandomForestRegressor(
-#     n_estimators=300,
-#     max_depth=10,
-#     min_samples_split=5,
-#     min_samples_leaf=2,
-#     random_state=42,
-#     oob_score=True
-# )
-# rf.fit(X_train, y_train)
-
-# # Predict and evaluate
-# y_pred = rf.predict(X_test)
-# mae = mean_absolute_error(y_test, y_pred)
-# rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-
-# print("Random Forest Results:")
-# print(f"MAE: {mae:.4f}")
-# print(f"RMSE: {rmse:.4f}")
-# print(f"OOB Score: {rf.oob_score_:.4f}")
-
-# # Optional: Check feature importances
-# importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
-# print("\nTop Feature Importances:")
-# print(importances.head(10))
-
-
-# ~~~~~~~~XGB Regressor
-
-from xgboost import XGBRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-import numpy as np
-
-
 X = samples_df[features]
 y = samples_df['traffic_pct_change']
+# ~~~~~~~Regression~~~~~~~~~
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = LinearRegression()
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+
+mae = mean_absolute_error(y_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+print("Feature columns used in model:", features)
+print("Model coefficients:", model.coef_)
+print("Intercept:", model.intercept_)
+print(f"MAE: {mae:.4f}, RMSE: {rmse:.4f}")
+coef_df = pd.DataFrame({
+    'feature': features,
+    'coefficient': model.coef_
+})
+coef_df.loc[len(coef_df.index)] = ['intercept', model.intercept_]
+coef_df.to_csv("model_coefficients.csv", index=False)
+
+# --- Save predictions ---
+results_df = pd.DataFrame({
+    'sensor_id': X_test.index,  # assumes X_test preserves sensor index
+    'predicted_traffic_pct_change': y_pred,
+    'actual_traffic_pct_change': y_test.values
+})
+results_df.to_csv("model_predictions.csv", index=False)
+
+# --- Save full dataset with predictions (optional) ---
+samples_df['predicted_traffic_pct_change'] = model.predict(X)
+samples_df.to_csv("samples_with_predictions.csv", index=False)
+
+print("Exported model results to CSV.")
+
+# # ~~~~~~~Random Forest~~~~~~~~~
+
+# Split train/test (80/20)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Fit Random Forest
+rf = RandomForestRegressor(
+    n_estimators=300,
+    max_depth=10,
+    min_samples_split=5,
+    min_samples_leaf=2,
+    random_state=42,
+    oob_score=True
+)
+rf.fit(X_train, y_train)
+
+# Predict and evaluate
+y_pred = rf.predict(X_test)
+mae = mean_absolute_error(y_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+print("Random Forest Results:")
+print(f"MAE: {mae:.4f}")
+print(f"RMSE: {rmse:.4f}")
+print(f"OOB Score: {rf.oob_score_:.4f}")
+
+# Optional: Check feature importances
+importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+print("\nTop Feature Importances:")
+print(importances.head(10))
+
+# ~~~~~~~~XGB Regressor
 
 # Split train/test (80/20)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
