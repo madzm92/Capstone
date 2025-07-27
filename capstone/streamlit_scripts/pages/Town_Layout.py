@@ -83,14 +83,24 @@ gdf['use_type_group'] = gdf['use_type']
 gdf.loc[gdf['use_type_group'] == 'Multiple Houses on one parcel', 'use_type_group'] = 'Multi-Unit Residence'
 gdf.loc[~gdf['use_type_group'].isin(['Multi-Unit Residence', 'Single Family Residential']), 'use_type_group'] = 'Other'
 
+gdf["hover_info"] = (
+    "<b>Town Information</b><br>" +
+    "Use Type: " + gdf["use_type"].astype(str) + "<br>" +
+    "Community Category: " + gdf["community_category"].astype(str) + "<br>" +
+    "Total Acres: " + gdf["acres"].astype(str) + "<br>" +
+    "Address: " + gdf["address"].astype(str) + "<br>"
+)
+
 # Create the Plotly choropleth
 fig = px.choropleth(
     gdf,
     geojson=gdf.geometry,
     locations=gdf.index,
     color='use_type_group',
-    hover_name='town_name',
-    hover_data=['use_type', 'acres', 'address', 'community_category'],
+    custom_data=["hover_info"],
+)
+fig.update_traces(
+    hovertemplate="%{customdata[0]}<extra></extra>"
 )
 
 # Update map to center on the selected town
@@ -99,7 +109,7 @@ fig.update_geos(
     projection_type="albers usa",
     lakecolor="white",
     center={"lat": center_lat, "lon": center_lon},
-    projection_scale=30,  # increase for more zoom
+    projection_scale=50,  # increase for more zoom
     fitbounds="locations",  # optional: fits map to geometry bounds
     scope="usa",  # optional: keep if using USA map view
 )

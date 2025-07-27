@@ -7,7 +7,7 @@ import json
 
 st.set_page_config(page_title="MBTA Communities Compliance", layout="wide")
 
-# Set up the SQLAlchemy engine and session
+### 1. GET DATA SECTION
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
 
 # Load data
@@ -23,6 +23,8 @@ gdf = gpd.read_postgis(
     con=engine,
     geom_col='geom'
 )
+
+### 2. Prepare data for visualization
 
 # Reproject to WGS84 (lat/lon)
 gdf.set_crs(epsg=26986, allow_override=True, inplace=True)
@@ -43,8 +45,13 @@ color_map = {
     "Noncompliant": "red"
 }
 
-# Streamlit UI
+# Last time data was updated (manual process)
+last_ingestion_date = "May 2025"
+
+### 3. Plot data 
+
 st.title("MBTA Communities Compliance Map")
+st.write(f"This page displays the current compliance status of all towns impacted by the MBTA Communities Law as of {last_ingestion_date}")
 
 gdf["hover_info"] = (
     "<b>Town Information</b><br>" +
@@ -55,15 +62,14 @@ gdf["hover_info"] = (
     "Total Housing: " + gdf["total_housing"].map("{:.2f}".format) + "<br>" +
     "Min Multi-Family: " + gdf["min_multi_family"].map("{:.2f}".format)
 )
-print("hover_info", gdf['hover_info'])
-# Plotly Choropleth
+
 fig = px.choropleth_mapbox(
     gdf,
     geojson=geojson,
-    locations="id",  # must match geojson feature "id"
+    locations="id",
     color="compliance_status",
     color_discrete_map=color_map,
-    custom_data=["hover_info"],  # pass hover_info here
+    custom_data=["hover_info"],
     mapbox_style="carto-positron",
     center={"lat": 42.3, "lon": -71.2},
     zoom=8.3,
@@ -86,5 +92,4 @@ fig.update_layout(
     )
 )
 
-# Show the map
 st.plotly_chart(fig, use_container_width=False)
