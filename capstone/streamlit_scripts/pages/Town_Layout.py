@@ -44,11 +44,15 @@ def unique_community_category(session, ):
     return sorted(rows)
 
 
+### 1. GET DATA SECTION
+
+st.title("Town Land Use")
+st.write(f"This page displays the current use for all plots of land within a town. Land use is grouped, and the original land use type is displayed in the hover box")
+
 # Set up the SQLAlchemy engine and session
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
 Session = sessionmaker(bind=engine)
 session = Session()
-
 
 community_categories = unique_community_category(session)
 selected_category = st.selectbox('Select Community Category', community_categories)
@@ -57,8 +61,9 @@ towns_list = unique_towns(session, selected_category)
 selected_town_name = st.selectbox('Select Town', towns_list)
 df = query(session, selected_town_name)
 
-# Convert the WKT geometries to GeoDataFrame
-# Ensure geometry is properly loaded
+### 2. Prepare data for visualization
+
+# Convert the WKT geometries to GeoDataFrame: Ensure geometry is properly loaded
 gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df['geom_wkt']))
 
 # Set and convert CRS to EPSG:4326 for lat/lon
@@ -83,6 +88,8 @@ gdf['use_type_group'] = gdf['use_type']
 gdf.loc[gdf['use_type_group'] == 'Multiple Houses on one parcel', 'use_type_group'] = 'Multi-Unit Residence'
 gdf.loc[~gdf['use_type_group'].isin(['Multi-Unit Residence', 'Single Family Residential']), 'use_type_group'] = 'Other'
 
+### 3. Plot data 
+
 gdf["hover_info"] = (
     "<b>Town Information</b><br>" +
     "Use Type: " + gdf["use_type"].astype(str) + "<br>" +
@@ -91,7 +98,6 @@ gdf["hover_info"] = (
     "Address: " + gdf["address"].astype(str) + "<br>"
 )
 
-# Create the Plotly choropleth
 fig = px.choropleth(
     gdf,
     geojson=gdf.geometry,
@@ -109,19 +115,8 @@ fig.update_geos(
     projection_type="albers usa",
     lakecolor="white",
     center={"lat": center_lat, "lon": center_lon},
-    projection_scale=50,  # increase for more zoom
-    fitbounds="locations",  # optional: fits map to geometry bounds
-    scope="usa",  # optional: keep if using USA map view
-)
-
-fig.update_layout(
-    coloraxis_colorbar_title="Town Name", 
-    geo=dict(
-        projection_type="albers usa",
-        showland=True,
-        landcolor="lightgray",
-        subunitcolor="black",
-    ),
+    projection_scale=100,
+    fitbounds="locations",
 )
 
 fig.update_layout(
@@ -137,6 +132,5 @@ fig.update_layout(
     )
 )
 
-st.write("Multi Family Housing vs Single Family Housing by Town")
 fig.update_traces(marker_line_width=0.5, marker_line_color='black', selector=dict(type='choropleth'))
 st.plotly_chart(fig)
