@@ -11,7 +11,7 @@ def simplify_geometries(gdf, tolerance=0.01):
     return gdf.geometry.apply(lambda geom: geom.simplify(tolerance, preserve_topology=True))
 
 def query(session, town_name):
-# Filter Data
+    # Filter Data
     query = """
         SELECT loc_id, town_name, use_type, acres, address, community_category, ST_AsText(geometry) AS geom_wkt
         FROM general_data.shapefiles
@@ -23,21 +23,22 @@ def query(session, town_name):
     return df
 
 def unique_towns(session, selected_category):
-# Get list of Towns
+    # Get list of Towns
     query = """
         SELECT distinct town_name
-        FROM general_data.shapefiles
-        where community_category = :selected_category
+        FROM general_data.town_nameplate
+        where current_status = :selected_category
     """
     result = session.execute(text(query), {"selected_category":selected_category})
     rows = [row[0] for row in result]
     return sorted(rows)
 
-def unique_community_category(session, ):
-# Get list of community categories
+def unique_status(session, ):
+    # Get list of unique compliance statuses
+
     query = """
-        SELECT distinct community_category
-        FROM general_data.shapefiles
+        SELECT distinct current_status
+        FROM general_data.town_nameplate
     """
     result = session.execute(text(query))
     rows = [row[0] for row in result]
@@ -55,11 +56,21 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 st.sidebar.title("Filters")
-community_categories = unique_community_category(session)
-selected_category = st.sidebar.selectbox('Select Community Category', community_categories)
+community_categories = unique_status(session)
+selected_category = st.sidebar.selectbox('Select Compliance Status', community_categories)
 
 towns_list = unique_towns(session, selected_category)
-selected_town_name = st.sidebar.selectbox('Select Town', towns_list)
+
+# use session state to save filtered town for next tab
+if "town_name_selected" in st.session_state and st.session_state["town_name_selected"] in towns_list:
+    default_index = towns_list.index(st.session_state["town_name_selected"])
+else:
+    default_index = 0
+    st.session_state["town_name_selected"] = towns_list[0]
+
+selected_town_name = st.sidebar.selectbox('Select Town', towns_list, index=default_index)
+st.session_state["town_name_selected"] = selected_town_name
+
 
 df = query(session, selected_town_name)
 

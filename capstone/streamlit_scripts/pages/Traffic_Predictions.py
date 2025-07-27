@@ -72,9 +72,20 @@ def load_data():
 parcels_df, traffic_df, rail_stops, town_geoms = load_data()
 
 # Sidebar controls
-st.sidebar.header("User Controls")
+st.sidebar.title("Filters")
+
+# use session state to save filtered town for previous tab
 towns_available = sorted(parcels_df["town_name"].unique())
-selected_town = st.sidebar.selectbox("Select Town", towns_available)
+if "town_name_selected" in st.session_state and st.session_state["town_name_selected"] in towns_available:
+    default_index = towns_available.index(st.session_state["town_name_selected"])
+else:
+    default_index = 0  # Fallback to the first town if not set
+
+# Render selectbox with default value from session state
+selected_town = st.sidebar.selectbox("Select Town", towns_available, index=default_index)
+
+# Optional: update session state again if user changes it here too
+st.session_state["town_name_selected"] = selected_town
 
 # Subset of predictions
 predictions_df = traffic_df.copy()
