@@ -1,14 +1,11 @@
 import geopandas as gpd
-from matplotlib import pyplot as plt
 from sqlalchemy import create_engine, text
-from geoalchemy2 import Geometry
 from sqlalchemy.orm import sessionmaker
 import pandas as pd
-
 import streamlit as st
-import geopandas as gpd
 import plotly.express as px
-import pandas as pd
+
+st.set_page_config(page_title="MBTA Communities Compliance", layout="wide")
 
 def simplify_geometries(gdf, tolerance=0.01):
     return gdf.geometry.apply(lambda geom: geom.simplify(tolerance, preserve_topology=True))
@@ -54,37 +51,39 @@ session = Session()
 
 
 community_categories = unique_community_category(session)
-selected_category = st.selectbox('Select a Community Category', community_categories)
+selected_category = st.selectbox('Select Community Category', community_categories)
 
 towns_list = unique_towns(session, selected_category)
-selected_town_name = st.selectbox('Select a Town Name', towns_list)
+selected_town_name = st.selectbox('Select Town', towns_list)
 df = query(session, selected_town_name)
 
 # Convert the WKT geometries to GeoDataFrame
+# Ensure geometry is properly loaded
 gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df['geom_wkt']))
 
-# Make sure the CRS is set correctly (e.g., EPSG:4326 for lat/long)
+# Set and convert CRS to EPSG:4326 for lat/lon
 if gdf.crs is None:
-    gdf.set_crs("EPSG:26986", inplace=True)  # Adjust if needed to your local CRS
-gdf = gdf.to_crs(epsg=4326)  # Convert to WGS84 (latitude/longitude)
+    gdf.set_crs("EPSG:26986", inplace=True)  # Adjust based on your source CRS
+gdf = gdf.to_crs(epsg=4326)
 
-# Apply geometry simplification
+# Simplify geometries (if needed)
 gdf['geometry'] = simplify_geometries(gdf)
+
+# Calculate centroid lat/lon for each geometry
 gdf['latitude'] = gdf.geometry.centroid.y
 gdf['longitude'] = gdf.geometry.centroid.x
 
-# Convert to GeoJSON format (required by Plotly)
-geojson = gdf.to_crs(epsg=4326).__geo_interface__
+# Filter to get the selected town center
+selected_town = gdf[gdf['town_name'] == selected_town_name].iloc[0]
+center_lat = selected_town.latitude
+center_lon = selected_town.longitude
 
+# Group use types
 gdf['use_type_group'] = gdf['use_type']
 gdf.loc[gdf['use_type_group'] == 'Multiple Houses on one parcel', 'use_type_group'] = 'Multi-Unit Residence'
 gdf.loc[~gdf['use_type_group'].isin(['Multi-Unit Residence', 'Single Family Residential']), 'use_type_group'] = 'Other'
 
-
-# Create a hover feature by including other data columns (e.g., 'use_type', 'town_name')
-hover_data = gdf[['town_name', 'use_type', 'acres', 'address', 'community_category']].to_dict(orient='records')
-
-# Create the Plotly map
+# Create the Plotly choropleth
 fig = px.choropleth(
     gdf,
     geojson=gdf.geometry,
@@ -92,17 +91,19 @@ fig = px.choropleth(
     color='use_type_group',
     hover_name='town_name',
     hover_data=['use_type', 'acres', 'address', 'community_category'],
-    # title=f"Interactive Map of {selected_town_name}",
 )
 
+# Update map to center on the selected town
 fig.update_geos(
     visible=True,
     projection_type="albers usa",
     lakecolor="white",
-    projection_scale=20,
-    center={"lat": 42.4072, "lon": -71.3824},
-    scope="usa",
+    center={"lat": center_lat, "lon": center_lon},
+    projection_scale=30,  # increase for more zoom
+    fitbounds="locations",  # optional: fits map to geometry bounds
+    scope="usa",  # optional: keep if using USA map view
 )
+
 fig.update_layout(
     coloraxis_colorbar_title="Town Name", 
     geo=dict(
@@ -111,6 +112,19 @@ fig.update_layout(
         landcolor="lightgray",
         subunitcolor="black",
     ),
+)
+
+fig.update_layout(
+    width=2000,
+    height=500,
+    mapbox_style="carto-positron",
+    margin={"r": 0, "t": 0, "l": 0, "b": 0},
+    legend_title_text="Use Type Group",
+    legend=dict(
+        font=dict(size=20),
+        itemsizing='constant',
+        tracegroupgap=10
+    )
 )
 
 st.write("Multi Family Housing vs Single Family Housing by Town")
