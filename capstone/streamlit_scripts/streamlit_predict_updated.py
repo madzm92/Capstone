@@ -102,12 +102,14 @@ st.sidebar.header("User Controls")
 
 parcel_ids = parcels_df['pid'].tolist()
 selected_parcel_id = st.sidebar.selectbox("Select Parcel", parcel_ids)
-selected_pct = st.sidebar.selectbox("Select % Housing Increase", sorted(traffic_df['pop_increase_pct'].unique()))
+selected_pct = st.sidebar.selectbox("Select % Housing Increase", sorted(traffic_df['predicted_traffic_pct_change'].unique()))
 # selected_rail_pct = st.sidebar.selectbox("Select % Using MBTA Commuter Rail", sorted(traffic_df['rail_pct'].unique()))
 
 # Filter predictions for selected parcel and settings
 predictions_df = traffic_df[
-    (traffic_df['pop_increase_pct'] == selected_pct)].copy()
+    (traffic_df['predicted_traffic_pct_change'] == selected_pct)].copy()
+
+predictions_df = traffic_df.copy()
 
 if predictions_df.empty:
     st.warning("No prediction data found for the selected combination.")
@@ -126,7 +128,7 @@ else:
             "use_type": selected.use_type
         }
     }
-
+    predictions_df['pct_increase'] = 0.05
     # Compute marker size scaled by pct_increase
     max_pct = predictions_df['pct_increase'].max()
     min_pct = predictions_df['pct_increase'].min()
@@ -141,11 +143,9 @@ else:
         "Class: " + predictions_df["functional_class"].astype(str) + "<br>" +
         "Population Change: " + predictions_df["pct_increase"].map("{:.4f}%".format) + "<br>" +
         "Inital Traffic Total: " + predictions_df["traffic_start"].map("{:.2f}".format) +"<br>" +
-        "Inital Traffic Total: " + predictions_df["predicted_traffic_volume"].map("{:.2f}".format) + "<br>"
+        "Final Traffic Total: " + predictions_df["predicted_traffic_volume"].map("{:.2f}".format) + "<br>"
     )
-    print("predictions_df")
-    print(predictions_df)
-    print(predictions_df.columns)
+
     # Color scale (red for higher increase)
     fig = px.scatter_mapbox(
         predictions_df,

@@ -10,3 +10,4 @@ mbta_data
 *shapefiles
 *shp
 *.env
+*.png
