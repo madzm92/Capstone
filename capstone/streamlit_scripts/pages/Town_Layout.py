@@ -54,11 +54,13 @@ engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/sp
 Session = sessionmaker(bind=engine)
 session = Session()
 
+st.sidebar.title("Filters")
 community_categories = unique_community_category(session)
-selected_category = st.selectbox('Select Community Category', community_categories)
+selected_category = st.sidebar.selectbox('Select Community Category', community_categories)
 
 towns_list = unique_towns(session, selected_category)
-selected_town_name = st.selectbox('Select Town', towns_list)
+selected_town_name = st.sidebar.selectbox('Select Town', towns_list)
+
 df = query(session, selected_town_name)
 
 ### 2. Prepare data for visualization
