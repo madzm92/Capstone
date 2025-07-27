@@ -1,6 +1,5 @@
 import geopandas as gpd
 from sqlalchemy import create_engine
-import pandas as pd
 import streamlit as st
 import plotly.express as px
 import json
