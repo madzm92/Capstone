@@ -231,3 +231,81 @@ print(pd.Series(xgb.feature_importances_, index=X_train.columns).sort_values(asc
 plot_residuals(y_test, y_pred, model_name="Linear Regression")
 plot_residuals(y_test, y_pred_rf, model_name="Random Forest")
 plot_residuals(y_test, y_pred_xgb, model_name="XGBoost")
+
+# ~~~~PREDICT~~~~~~~
+
+import numpy as np
+import pandas as pd
+
+# 1. Determine the max year in population data
+max_year = pop_hist['year'].max()
+
+# 2. Get latest population per town at max_year
+pop_latest = pop_hist[pop_hist['year'] == max_year][['town_name', 'population']].copy()
+
+# 3. Get latest traffic volume per sensor for max_year
+traffic_latest = daily_avg[daily_avg['year'] == max_year][['sensor_id', 'avg_daily_volume']].copy()
+traffic_latest = traffic_latest.rename(columns={'avg_daily_volume': 'traffic_start'})
+
+# 4. Merge sensor metadata (functional_class, town_name) and MBTA features
+sensor_features_latest = traffic.merge(traffic_latest, on='sensor_id').merge(
+    pop_latest, on='town_name', how='left'
+)
+
+# Keep only the closest MBTA stop per sensor_id
+sensor_features_dedup = (
+    sensor_features.sort_values(['sensor_id', 'dist_to_mbta_stop'])
+    .drop_duplicates(subset='sensor_id', keep='first')
+)
+
+# 5. Add MBTA features: dist_to_mbta_stop, mbta_usage from sensor_features (from your previous code)
+sensor_features_latest = sensor_features_latest.merge(
+    sensor_features_dedup, on='sensor_id', how='left'
+)
+
+sensor_features_latest.fillna({'dist_to_mbta_stop': sensor_features_latest['dist_to_mbta_stop'].max(), 'mbta_usage': 0}, inplace=True)
+
+# 6. Calculate new population after +5% increase
+sensor_features_latest['pop_start'] = sensor_features_latest['population']
+sensor_features_latest['pop_end'] = sensor_features_latest['pop_start'] * 1.05
+sensor_features_latest['pop_pct_change'] = 0.05  # fixed increase
+
+# 7. Log transform features
+sensor_features_latest['log_pop_start'] = np.log1p(sensor_features_latest['pop_start'])
+sensor_features_latest['log_traffic_start'] = np.log1p(sensor_features_latest['traffic_start'])
+
+# 8. year_gap = 1 (predicting one year difference)
+sensor_features_latest['year_gap'] = 1
+
+# 9. One-hot encode functional_class to match model features
+functional_dummies = pd.get_dummies(sensor_features_latest['functional_class'], prefix='func_class')
+
+# To ensure same dummy columns as training data
+for col in [c for c in X.columns if c.startswith('func_class_')]:
+    if col not in functional_dummies.columns:
+        functional_dummies[col] = 0
+
+# Align columns order
+functional_dummies = functional_dummies[[c for c in X.columns if c.startswith('func_class_')]]
+
+# 10. Assemble feature DataFrame for prediction
+X_pred = pd.concat([
+    sensor_features_latest[['pop_pct_change', 'pop_start', 'traffic_start', 'log_pop_start', 'log_traffic_start', 'year_gap', 'dist_to_mbta_stop', 'mbta_usage']],
+    functional_dummies
+], axis=1)
+
+# 11. Predict traffic_pct_change with Random Forest model
+predicted_traffic_pct_change = xgb.predict(X_pred)
+
+# 12. Calculate predicted traffic volume after population increase
+sensor_features_latest['predicted_traffic_pct_change'] = predicted_traffic_pct_change
+sensor_features_latest['predicted_traffic_volume'] = sensor_features_latest['traffic_start'] * (1 + predicted_traffic_pct_change)
+
+# 13. Output results
+result_df = sensor_features_latest[[
+    'sensor_id', 'town_name', 'functional_class', 'pop_start', 'pop_end',
+    'traffic_start', 'predicted_traffic_pct_change', 'predicted_traffic_volume'
+]]
+
+print(result_df.head())
+result_df.to_excel('results.xlsx')

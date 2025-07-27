@@ -86,7 +86,7 @@ def ingest_traffic_data(traffic_nameplate_df: pd.DataFrame, engine, filepath):
     Insert data into traffic_counts table"""
     all = pd.DataFrame()
     # Load the uploaded Excel file again
-    for file in file_path:
+    for file in filepath:
         traffic_data_df= pd.read_excel(file, sheet_name=0, header=0)
         traffic_data_df['start_date_time'] = pd.to_datetime(traffic_data_df['Date'].astype(str) + " " + traffic_data_df['Time'].str[:5] + ":00")
         traffic_data_df = traffic_data_df.drop(columns=['Unnamed: 0', 'Town', 'Date', 'Time'])
@@ -110,6 +110,6 @@ if __name__ == '__main__':
     db_url = "postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db"
     with DatabaseConnection(db_url) as session:
         engine = create_engine(db_url)
-        file_path = ["traffic_data/traffic_data_class_5_4.xlsx"]
+        file_path = ["traffic_data/traffic_data_class_1.xlsx"]
         traffic_nameplate_df = ingest_traffic_nameplate(session)
         ingest_traffic_data(traffic_nameplate_df, engine, file_path)
