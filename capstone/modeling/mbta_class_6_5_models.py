@@ -19,6 +19,26 @@ engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/sp
 Session = sessionmaker(bind=engine)
 session = Session()
 
+def get_distance_to_category(land_use_gdf, sensor_gdf, category_name, target_crs="EPSG:26986"):
+
+    # Filter to group of interest
+    target_land_use = land_use_gdf[land_use_gdf['grouped'] == category_name].copy()
+    target_land_use = target_land_use[target_land_use.geometry.notnull() & target_land_use.is_valid]
+
+    if target_land_use.crs.to_epsg() != 26986:
+        target_land_use = target_land_use.to_crs(target_crs)
+    
+    # Spatial join: distance to nearest
+    distance_result = gpd.sjoin_nearest(
+        sensor_gdf,
+        target_land_use[['geometry']],
+        how='left',
+        distance_col=f'dist_to_{category_name.replace(" ", "_").lower()}'
+    )
+    
+    return distance_result[[ 'sensor_id', f'dist_to_{category_name.replace(" ", "_").lower()}']]
+
+
 def plot_residuals(y_test, y_pred, model_name="Model", save_dir="residual_plots"):
     residuals = y_test - y_pred
 
@@ -74,6 +94,68 @@ pop_hist = pd.read_sql("""
     FROM general_data.annual_population ap
     LEFT JOIN general_data.town_census_crosswalk tcc ON ap.zip_code = tcc.zip_code
 """, engine)
+
+# --- Load land data ---
+print("Loading land data...")
+land_use = gpd.read_postgis(
+    """
+    SELECT geometry, use_type, town_name
+    FROM general_data.shapefiles
+    """,
+    engine,
+    geom_col="geometry"
+)
+
+grouped_map = pd.read_csv("grouped_land_use_types.csv")  # contains use_type and grouped
+land_use = land_use.merge(grouped_map, left_on='use_type',right_on='original', how='left')
+
+land_use = land_use[land_use.geometry.notnull() & land_use.is_valid & ~land_use.geometry.is_empty]
+traffic = traffic[traffic.geometry.notnull() & traffic.is_valid & ~traffic.geometry.is_empty]
+
+if land_use.crs is None:
+    land_use.set_crs("EPSG:26986", inplace=True)
+
+if traffic.crs is None:
+    traffic.set_crs("EPSG:4326", inplace=True)
+
+target_crs = "EPSG:26986"
+land_use = land_use.to_crs(target_crs)
+# traffic = traffic.to_crs(target_crs)
+
+# sensor_buffer = traffic[['sensor_id', 'geom']].copy()
+# sensor_buffer = sensor_buffer.set_geometry('geom')
+# sensor_buffer['geometry'] = sensor_buffer.buffer(500)
+
+# # --- Spatial join: parcels that intersect buffer ---
+# sensor_landuse = gpd.sjoin(land_use, sensor_buffer, how='inner', predicate='intersects')
+# sensor_landuse['landuse_area_sqm'] = sensor_landuse.geometry.area
+
+# # --- Aggregate land use area by group ---
+# landuse_grouped = (
+#     sensor_landuse.groupby(['sensor_id', 'grouped'])['landuse_area_sqm']
+#     .sum().unstack(fill_value=0)
+# )
+
+# # --- Total land use area per buffer ---
+# landuse_grouped['total_landuse_area'] = landuse_grouped.sum(axis=1)
+
+# # --- Add percentage columns ---
+# for col in landuse_grouped.columns:
+#     if col != 'total_landuse_area':
+#         landuse_grouped[f'pct_{col}'] = landuse_grouped[col] / landuse_grouped['total_landuse_area']
+
+# --- Reset index and merge into main dataset ---
+# landuse_grouped = landuse_grouped.reset_index()
+# samples_df = samples_df.merge(landuse_grouped, on='sensor_id', how='left')
+# samples_df.fillna(0, inplace=True)
+
+# sensor_landuse = gpd.sjoin_nearest(sensor_buffer, land_use, how='left', distance_col='dist_to_landuse')
+# landuse_counts = (
+#     sensor_landuse.groupby(['sensor_id', 'grouped']).size()
+#     .unstack(fill_value=0)
+#     .reset_index()
+# )
+######
 
 # --- Process traffic data ---
 print("Processing traffic data...")
@@ -176,6 +258,38 @@ samples_df.fillna(0, inplace=True)
 # --- One-hot encode functional_class ---
 samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
 
+
+#----Join land use------
+distance_school = get_distance_to_category(land_use, sensor_gdf, "School/Education")
+distance_commercial = get_distance_to_category(land_use, sensor_gdf, "Commercial: Office")
+distance_shopping = get_distance_to_category(land_use, sensor_gdf, "Commercial: Retail")
+distance_multi = get_distance_to_category(land_use, sensor_gdf, "Residential: Multi-Family")
+distance_highway = get_distance_to_category(land_use, sensor_gdf, "Transportation")
+distance_single = get_distance_to_category(land_use, sensor_gdf, "Residential: Single Family")
+distance_religious = get_distance_to_category(land_use, sensor_gdf, "Religious")
+distance_recreational = get_distance_to_category(land_use, sensor_gdf, "Recreational: Public")
+distance_recreational_priv = get_distance_to_category(land_use, sensor_gdf, "Recreational: Private")
+distance_agro = get_distance_to_category(land_use, sensor_gdf, "Agricultural")
+distance_industry = get_distance_to_category(land_use, sensor_gdf, "Industrial")
+distance_healthcare = get_distance_to_category(land_use, sensor_gdf, "Healthcare")
+distance_hotel = get_distance_to_category(land_use, sensor_gdf, "Hotels/Hospitality")
+distance_features = distance_school.merge(distance_shopping, on='sensor_id', how='outer') \
+                                   .merge(distance_multi, on='sensor_id', how='outer') \
+                                   .merge(distance_highway, on='sensor_id', how='outer') \
+                                   .merge(distance_commercial, on='sensor_id', how='outer') \
+                                   .merge(distance_single, on='sensor_id', how='outer') \
+                                   .merge(distance_religious, on='sensor_id', how='outer') \
+                                   .merge(distance_recreational, on='sensor_id', how='outer') \
+                                   .merge(distance_recreational_priv, on='sensor_id', how='outer') \
+                                   .merge(distance_agro, on='sensor_id', how='outer') \
+                                    .merge(distance_industry, on='sensor_id', how='outer') \
+                                    .merge(distance_healthcare, on='sensor_id', how='outer') \
+                                    .merge(distance_hotel, on='sensor_id', how='outer')
+
+samples_df = samples_df.merge(distance_features, on='sensor_id', how='left')
+samples_df.fillna(0, inplace=True)
+
+
 # --- Modeling ---
 ### CHANGES TO MAKE ###
 # 1. Log-transform the target (traffic_pct_change)
@@ -194,12 +308,49 @@ samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dis
 samples_df['mbta_x_dist'] = samples_df['mbta_usage'] * samples_df['dist_to_mbta_stop']
 
 # --- 3. Update features list ---
+
+for col in samples_df.columns:
+    if col.startswith("dist_to_"):
+        samples_df[f"log_{col}"] = np.log1p(samples_df[col])
+
+samples_df["pop_change_x_dist_to_retail"] = samples_df["pop_pct_change"] * samples_df["dist_to_commercial:_retail"]
+samples_df["mbta_x_healthcare"] = samples_df["dist_to_mbta_stop"] * samples_df["dist_to_healthcare"]
+samples_df["near_school"] = (samples_df["dist_to_school/education"] < 0.25).astype(int)
+samples_df["near_retail"] = (samples_df["dist_to_commercial:_retail"] < 0.25).astype(int)
+samples_df["retail_x_traffic"] = samples_df["dist_to_commercial:_retail"] * samples_df["traffic_start"]
+samples_df["school_x_pop"] = samples_df["dist_to_school/education"] * samples_df["pop_start"]
+
+
+# features = [
+#     'pop_pct_change', 'pop_start', 'traffic_start',
+#     'year_gap','mbta_usage', 'pop_change_x_mbta', 'pop_change_x_dist', 'mbta_x_dist',
+#     'pop_change_x_dist_to_retail', 'mbta_x_healthcare', 'near_school', 'near_retail',
+#     'retail_x_traffic', 'school_x_pop','dist_to_mbta_stop'
+# ] + [col for col in samples_df.columns if col.startswith('func_class_')]
+# # distance_cols = [col for col in samples_df.columns if col.startswith("dist_to_")]
+# log_cols = [col for col in samples_df.columns if col.startswith("log_")]
+# # features += distance_cols
+# features += log_cols
+# features.remove('log_traffic_pct_change')
+# # features.remove('dist_to_commercial:_retail')
+# # features.remove('dist_to_religious')
+
 features = [
-    'pop_pct_change', 'pop_start', 'traffic_start',
-    'log_pop_start', 'log_traffic_start', 'year_gap',
-    'dist_to_mbta_stop', 'mbta_usage',
-    'pop_change_x_mbta', 'pop_change_x_dist', 'mbta_x_dist'
-] + [col for col in samples_df.columns if col.startswith('func_class_')]
+    'pop_pct_change',
+    'retail_x_traffic',
+    'traffic_start',
+    'pop_start',
+    'year_gap',
+    'mbta_x_healthcare',
+    'log_dist_to_commercial:_retail',
+    'pop_change_x_dist',
+    'log_dist_to_agricultural',
+    'log_dist_to_hotels/hospitality',
+    'log_dist_to_religious',
+    'log_dist_to_school/education',
+    'log_dist_to_healthcare',
+    'school_x_pop'
+]
 
 X = samples_df[features]
 y = samples_df['log_traffic_pct_change']
@@ -232,8 +383,11 @@ print(pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=
 
 # --- XGBoost ---
 xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=4, subsample=0.8, colsample_bytree=0.8, random_state=42)
-xgb.fit(X_train, y_train)
-y_pred_log_xgb = xgb.predict(X_test)
+# xgb.fit(X_train, y_train)
+# y_pred_log_xgb = xgb.predict(X_test)
+# y_pred_xgb = np.expm1(y_pred_log_xgb) - epsilon
+xgb.fit(X_train.values, y_train.values)
+y_pred_log_xgb = xgb.predict(X_test.values)
 y_pred_xgb = np.expm1(y_pred_log_xgb) - epsilon
 
 print("\nXGBoost Results:")
@@ -246,3 +400,33 @@ print(pd.Series(xgb.feature_importances_, index=X_train.columns).sort_values(asc
 plot_residuals(y_true, y_pred, model_name="Linear Regression")
 plot_residuals(y_true, y_pred_rf, model_name="Random Forest")
 plot_residuals(y_true, y_pred_xgb, model_name="XGBoost")
+
+# from sklearn.inspection import permutation_importance
+
+# # Assume xgb_model is your trained XGB model
+# perm_result = permutation_importance(xgb, X_test, y_test, n_repeats=10, random_state=42)
+
+# # Convert to DataFrame for sorting
+# importances_df = pd.DataFrame({
+#     "feature": X_test.columns,
+#     "importance": perm_result.importances_mean
+# }).sort_values(by="importance", ascending=False)
+
+# print(importances_df.head(15))
+
+# from sklearn.feature_selection import RFE
+# from xgboost import XGBRegressor
+
+# rfe_selector = RFE(estimator=XGBRegressor(n_estimators=100, random_state=42), n_features_to_select=10)
+# rfe_selector = rfe_selector.fit(X_train, y_train)
+
+# selected_features = X_train.columns[rfe_selector.support_]
+# print("Selected Features:", list(selected_features))
+
+# from sklearn.linear_model import LassoCV
+
+# lasso = LassoCV(cv=5, random_state=42).fit(X_train, y_train)
+
+# # Select features with non-zero coefficients
+# selected_features = X_train.columns[lasso.coef_ != 0]
+# print("Lasso-selected features:", list(selected_features))
