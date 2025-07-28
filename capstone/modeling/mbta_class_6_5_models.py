@@ -120,42 +120,6 @@ if traffic.crs is None:
 
 target_crs = "EPSG:26986"
 land_use = land_use.to_crs(target_crs)
-# traffic = traffic.to_crs(target_crs)
-
-# sensor_buffer = traffic[['sensor_id', 'geom']].copy()
-# sensor_buffer = sensor_buffer.set_geometry('geom')
-# sensor_buffer['geometry'] = sensor_buffer.buffer(500)
-
-# # --- Spatial join: parcels that intersect buffer ---
-# sensor_landuse = gpd.sjoin(land_use, sensor_buffer, how='inner', predicate='intersects')
-# sensor_landuse['landuse_area_sqm'] = sensor_landuse.geometry.area
-
-# # --- Aggregate land use area by group ---
-# landuse_grouped = (
-#     sensor_landuse.groupby(['sensor_id', 'grouped'])['landuse_area_sqm']
-#     .sum().unstack(fill_value=0)
-# )
-
-# # --- Total land use area per buffer ---
-# landuse_grouped['total_landuse_area'] = landuse_grouped.sum(axis=1)
-
-# # --- Add percentage columns ---
-# for col in landuse_grouped.columns:
-#     if col != 'total_landuse_area':
-#         landuse_grouped[f'pct_{col}'] = landuse_grouped[col] / landuse_grouped['total_landuse_area']
-
-# --- Reset index and merge into main dataset ---
-# landuse_grouped = landuse_grouped.reset_index()
-# samples_df = samples_df.merge(landuse_grouped, on='sensor_id', how='left')
-# samples_df.fillna(0, inplace=True)
-
-# sensor_landuse = gpd.sjoin_nearest(sensor_buffer, land_use, how='left', distance_col='dist_to_landuse')
-# landuse_counts = (
-#     sensor_landuse.groupby(['sensor_id', 'grouped']).size()
-#     .unstack(fill_value=0)
-#     .reset_index()
-# )
-######
 
 # --- Process traffic data ---
 print("Processing traffic data...")
@@ -189,24 +153,27 @@ samples = daily_avg.merge(pop_hist, on=['town_name', 'year'])
 # --- Create time-paired samples ---
 print("Creating time-difference samples...")
 samples = samples.sort_values(['sensor_id', 'year'])
-samples_df = []
 
-for sensor_id, group in samples.groupby('sensor_id'):
-    group = group.sort_values('year')
-    for i in range(len(group) - 1):
-        samples_df.append({
-            'sensor_id': sensor_id,
-            'year_start': group.iloc[i]['year'],
-            'year_end': group.iloc[i+1]['year'],
-            'traffic_start': group.iloc[i]['avg_daily_volume'],
-            'traffic_end': group.iloc[i+1]['avg_daily_volume'],
-            'pop_start': group.iloc[i]['population'],
-            'pop_end': group.iloc[i+1]['population'],
-            'town_name': group.iloc[i]['town_name'],
-            'functional_class': group.iloc[i]['functional_class']
-        })
+samples_df = (
+    samples.sort_values(['sensor_id', 'year'])
+    .groupby('sensor_id')
+    .agg({
+        'year': ['first', 'last'],
+        'avg_daily_volume': ['first', 'last'],
+        'population': ['first', 'last'],
+        'town_name': 'first',
+        'functional_class': 'first'
+    })
+)
 
-samples_df = pd.DataFrame(samples_df)
+samples_df.columns = [
+    'year_start', 'year_end',
+    'traffic_start', 'traffic_end',
+    'pop_start', 'pop_end',
+    'town_name', 'functional_class'
+]
+samples_df = samples_df.reset_index()
+
 samples_df['traffic_pct_change'] = (samples_df['traffic_end'] - samples_df['traffic_start']) / samples_df['traffic_start']
 samples_df['pop_pct_change'] = (samples_df['pop_end'] - samples_df['pop_start']) / samples_df['pop_start']
 samples_df['log_pop_start'] = np.log1p(samples_df['pop_start'])
@@ -256,7 +223,7 @@ samples_df = samples_df.merge(sensor_features, on='sensor_id', how='left')
 samples_df.fillna(0, inplace=True)
 
 # --- One-hot encode functional_class ---
-samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
+# samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
 
 
 #----Join land use------
@@ -291,11 +258,6 @@ samples_df.fillna(0, inplace=True)
 
 
 # --- Modeling ---
-### CHANGES TO MAKE ###
-# 1. Log-transform the target (traffic_pct_change)
-# 2. Add interaction terms
-# 3. Evaluate on back-transformed predictions
-# 4. Optional: drop low-importance func_class features (already near-zero)
 
 # --- 1. Log-transform the target ---
 # Add small epsilon to handle near-zero or negative percentage changes
@@ -320,21 +282,6 @@ samples_df["near_retail"] = (samples_df["dist_to_commercial:_retail"] < 0.25).as
 samples_df["retail_x_traffic"] = samples_df["dist_to_commercial:_retail"] * samples_df["traffic_start"]
 samples_df["school_x_pop"] = samples_df["dist_to_school/education"] * samples_df["pop_start"]
 
-
-# features = [
-#     'pop_pct_change', 'pop_start', 'traffic_start',
-#     'year_gap','mbta_usage', 'pop_change_x_mbta', 'pop_change_x_dist', 'mbta_x_dist',
-#     'pop_change_x_dist_to_retail', 'mbta_x_healthcare', 'near_school', 'near_retail',
-#     'retail_x_traffic', 'school_x_pop','dist_to_mbta_stop'
-# ] + [col for col in samples_df.columns if col.startswith('func_class_')]
-# # distance_cols = [col for col in samples_df.columns if col.startswith("dist_to_")]
-# log_cols = [col for col in samples_df.columns if col.startswith("log_")]
-# # features += distance_cols
-# features += log_cols
-# features.remove('log_traffic_pct_change')
-# # features.remove('dist_to_commercial:_retail')
-# # features.remove('dist_to_religious')
-
 features = [
     'pop_pct_change',
     'retail_x_traffic',
@@ -357,76 +304,139 @@ y = samples_df['log_traffic_pct_change']
 
 # --- Train/Test Split ---
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# --- Linear Regression ---
-model = LinearRegression()
-model.fit(X_train, y_train)
-y_pred_log = model.predict(X_test)
-y_pred = np.expm1(y_pred_log) - epsilon
 y_true = np.expm1(y_test) - epsilon
-
-print("\nLinear Regression:")
-print(f"MAE: {mean_absolute_error(y_true, y_pred):.4f}, RMSE: {np.sqrt(mean_squared_error(y_true, y_pred)):.4f}")
-print(f"The r2 score is {r2_score(y_true, y_pred)}")
-
-# --- Random Forest ---
-rf = RandomForestRegressor(n_estimators=300, max_depth=10, min_samples_split=5, min_samples_leaf=2, random_state=42, oob_score=True)
-rf.fit(X_train, y_train)
-y_pred_log_rf = rf.predict(X_test)
-y_pred_rf = np.expm1(y_pred_log_rf) - epsilon
-
-print("\nRandom Forest:")
-print(f"MAE: {mean_absolute_error(y_true, y_pred_rf):.4f}, RMSE: {np.sqrt(mean_squared_error(y_true, y_pred_rf)):.4f}, OOB Score: {rf.oob_score_:.4f}")
-print(f"The r2 score is {r2_score(y_true, y_pred_rf)}")
-print("Top Feature Importances:")
-print(pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False).head(10))
 
 # --- XGBoost ---
 xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=4, subsample=0.8, colsample_bytree=0.8, random_state=42)
-# xgb.fit(X_train, y_train)
-# y_pred_log_xgb = xgb.predict(X_test)
-# y_pred_xgb = np.expm1(y_pred_log_xgb) - epsilon
+
 xgb.fit(X_train.values, y_train.values)
 y_pred_log_xgb = xgb.predict(X_test.values)
 y_pred_xgb = np.expm1(y_pred_log_xgb) - epsilon
 
 print("\nXGBoost Results:")
-print(f"MAE: {mean_absolute_error(y_true, y_pred_xgb):.4f}, RMSE: {np.sqrt(mean_squared_error(y_true, y_pred_xgb)):.4f}")
 print(f"The r2 score is {r2_score(y_true, y_pred_xgb)}")
 print("Top Feature Importances:")
 print(pd.Series(xgb.feature_importances_, index=X_train.columns).sort_values(ascending=False).head(10))
 
 # --- Plot Residuals ---
-plot_residuals(y_true, y_pred, model_name="Linear Regression")
-plot_residuals(y_true, y_pred_rf, model_name="Random Forest")
 plot_residuals(y_true, y_pred_xgb, model_name="XGBoost")
 
-# from sklearn.inspection import permutation_importance
+# Replace with your actual arrays or DataFrame columns
+mae = mean_absolute_error(y_true, y_pred_xgb)
+mean_target = np.mean(y_true)
+std_target = np.std(y_true)
+range_target = np.max(y_true) - np.min(y_true)
 
-# # Assume xgb_model is your trained XGB model
-# perm_result = permutation_importance(xgb, X_test, y_test, n_repeats=10, random_state=42)
+normalized_mae_mean = mae / mean_target
+normalized_mae_std = mae / std_target
+normalized_mae_range = mae / range_target
 
-# # Convert to DataFrame for sorting
-# importances_df = pd.DataFrame({
-#     "feature": X_test.columns,
-#     "importance": perm_result.importances_mean
-# }).sort_values(by="importance", ascending=False)
+print(f"MAE: {mae:.4f}")
+print(f"Normalized MAE (mean): {normalized_mae_mean:.4f}")
+print(f"Normalized MAE (std): {normalized_mae_std:.4f}")
+print(f"Normalized MAE (range): {normalized_mae_range:.4f}")
 
-# print(importances_df.head(15))
+rmse = np.sqrt(np.mean((y_true - y_pred_xgb) ** 2))
+mean_y = np.mean(y_true)
+std_y = np.std(y_true)
+range_y = np.max(y_true) - np.min(y_true)
 
-# from sklearn.feature_selection import RFE
-# from xgboost import XGBRegressor
+rmse_norm_mean = rmse / mean_y
+rmse_norm_std = rmse / std_y
+rmse_norm_range = rmse / range_y
 
-# rfe_selector = RFE(estimator=XGBRegressor(n_estimators=100, random_state=42), n_features_to_select=10)
-# rfe_selector = rfe_selector.fit(X_train, y_train)
+print("Raw RMSE:", rmse)
+print("Normalized RMSE (mean):", rmse_norm_mean)
+print("Normalized RMSE (std):", rmse_norm_std)
+print("Normalized RMSE (range):", rmse_norm_range)
 
-# selected_features = X_train.columns[rfe_selector.support_]
-# print("Selected Features:", list(selected_features))
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x=y_true, y=y_pred_xgb, alpha=0.6, s=40)
+plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'r--', label='Ideal Fit')
+plt.xlabel('Actual Traffic Volume % Change')
+plt.ylabel('Predicted Traffic Volume % Change')
+plt.title('Predicted vs. Actual Traffic Volume (XGBoost)')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+# sns.histplot(samples_df['traffic_pct_change'], kde=True, bins=50)
+# plt.title("Distribution of Traffic % Change")
 
-# from sklearn.linear_model import LassoCV
+# plt.scatter(y_test, y_pred_xgb, alpha=0.4)
+# plt.plot([-1, 1], [-1, 1], 'r--')  # Ideal line
+# plt.xlabel("Actual Traffic % Change")
+# plt.ylabel("Predicted Traffic % Change")
+# plt.title("Prediction vs Actual")
+# plt.grid(True)
+# plt.show()
 
-# lasso = LassoCV(cv=5, random_state=42).fit(X_train, y_train)
+# ~~~~PREDICT~~~~~~~
 
-# # Select features with non-zero coefficients
-# selected_features = X_train.columns[lasso.coef_ != 0]
-# print("Lasso-selected features:", list(selected_features))
+# # Features must be the same as model training:
+# features = [
+#     'pop_pct_change',
+#     'retail_x_traffic',
+#     'traffic_start',
+#     'pop_start',
+#     'year_gap',
+#     'mbta_x_healthcare',
+#     'log_dist_to_commercial:_retail',
+#     'pop_change_x_dist',
+#     'log_dist_to_agricultural',
+#     'log_dist_to_hotels/hospitality',
+#     'log_dist_to_religious',
+#     'log_dist_to_school/education',
+#     'log_dist_to_healthcare',
+#     'school_x_pop'
+# ]
+
+# # If you want to predict traffic changes for a 5% increase in population, set pop_pct_change = 0.05
+# samples_df['pop_pct_change'] = 0.05
+
+# # Recalculate any dependent features that involve pop_pct_change
+# samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dist_to_mbta_stop']
+# samples_df['pop_change_x_dist_to_retail'] = samples_df['pop_pct_change'] * samples_df['dist_to_commercial:_retail']
+
+# # Recalculate interaction features if needed
+# samples_df['retail_x_traffic'] = samples_df['dist_to_commercial:_retail'] * samples_df['traffic_start']
+# samples_df['mbta_x_healthcare'] = samples_df['dist_to_mbta_stop'] * samples_df['dist_to_healthcare']
+# samples_df['school_x_pop'] = samples_df['dist_to_school/education'] * samples_df['pop_start']
+
+# # Make sure log features are present
+# for col in ['dist_to_commercial:_retail', 'dist_to_agricultural', 'dist_to_hotels/hospitality', 
+#             'dist_to_religious', 'dist_to_school/education', 'dist_to_healthcare']:
+#     log_col = 'log_' + col
+#     if log_col not in samples_df.columns:
+#         samples_df[log_col] = np.log1p(samples_df[col])
+
+# # Also ensure year_gap is set properly (usually 1 for predicting next year)
+# samples_df['year_gap'] = 1
+
+# # --- Step 2: Extract features matrix for prediction ---
+# X_pred = samples_df[features]
+
+# # --- Step 3: Make predictions ---
+# # Predict log-scale traffic % change
+# y_pred_log = xgb.predict(X_pred.values)
+
+# # Convert back to percentage change scale (inverse of log1p)
+# epsilon = 1e-4  # same small number you added during training
+# samples_df['predicted_traffic_pct_change'] = np.expm1(y_pred_log) - epsilon
+
+# # --- Step 4: Calculate predicted traffic volume after population increase ---
+# samples_df['predicted_traffic_volume'] = samples_df['traffic_start'] * (1 + samples_df['predicted_traffic_pct_change'])
+
+# # --- Step 5: Output relevant results ---
+# result_cols = [
+#     'sensor_id', 'town_name', 'functional_class','pop_start','pop_end', 'traffic_start',
+#     'pop_pct_change', 'predicted_traffic_pct_change', 'predicted_traffic_volume',
+# ]
+
+# result_df = samples_df[result_cols].copy()
+# result_df = result_df.drop_duplicates(keep='last')
+
+# print(result_df.head())
+
+# # Save results if desired
+# result_df.to_excel('functional_5_6_traffic_predictions.xlsx', index=False)
