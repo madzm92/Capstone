@@ -53,6 +53,7 @@ traffic = gpd.read_postgis(
     SELECT location_id as sensor_id, town_name, functional_class, geom
     FROM general_data.traffic_nameplate
     where functional_class in ('(4) Minor Arterial', '(3) Other Principal Arterial')
+    and location_id != '3083'
     """,
     engine,
     geom_col="geom"
@@ -65,6 +66,7 @@ traffic_hist = pd.read_sql("""
     FROM general_data.traffic_nameplate tn  
     LEFT JOIN general_data.traffic_counts tc ON tn.location_id = tc.location_id
     where functional_class in ('(4) Minor Arterial', '(3) Other Principal Arterial')
+    and tn.location_id != '3083'
 """, engine)
 
 # --- Load population data ---
@@ -107,24 +109,27 @@ samples = daily_avg.merge(pop_hist, on=['town_name', 'year'])
 # --- Create time-paired samples ---
 print("Creating time-difference samples...")
 samples = samples.sort_values(['sensor_id', 'year'])
-samples_df = []
 
-for sensor_id, group in samples.groupby('sensor_id'):
-    group = group.sort_values('year')
-    for i in range(len(group) - 1):
-        samples_df.append({
-            'sensor_id': sensor_id,
-            'year_start': group.iloc[i]['year'],
-            'year_end': group.iloc[i+1]['year'],
-            'traffic_start': group.iloc[i]['avg_daily_volume'],
-            'traffic_end': group.iloc[i+1]['avg_daily_volume'],
-            'pop_start': group.iloc[i]['population'],
-            'pop_end': group.iloc[i+1]['population'],
-            'town_name': group.iloc[i]['town_name'],
-            'functional_class': group.iloc[i]['functional_class']
-        })
+samples_df = (
+    samples.sort_values(['sensor_id', 'year'])
+    .groupby('sensor_id')
+    .agg({
+        'year': ['first', 'last'],
+        'avg_daily_volume': ['first', 'last'],
+        'population': ['first', 'last'],
+        'town_name': 'first',
+        'functional_class': 'first'
+    })
+)
 
-samples_df = pd.DataFrame(samples_df)
+samples_df.columns = [
+    'year_start', 'year_end',
+    'traffic_start', 'traffic_end',
+    'pop_start', 'pop_end',
+    'town_name', 'functional_class'
+]
+samples_df = samples_df.reset_index()
+
 samples_df['traffic_pct_change'] = (samples_df['traffic_end'] - samples_df['traffic_start']) / samples_df['traffic_start']
 samples_df['pop_pct_change'] = (samples_df['pop_end'] - samples_df['pop_start']) / samples_df['pop_start']
 samples_df['log_pop_start'] = np.log1p(samples_df['pop_start'])
@@ -177,11 +182,6 @@ samples_df.fillna(0, inplace=True)
 samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
 
 # --- Modeling ---
-### CHANGES TO MAKE ###
-# 1. Log-transform the target (traffic_pct_change)
-# 2. Add interaction terms
-# 3. Evaluate on back-transformed predictions
-# 4. Optional: drop low-importance func_class features (already near-zero)
 
 # --- 1. Log-transform the target ---
 # Add small epsilon to handle near-zero or negative percentage changes
@@ -192,6 +192,7 @@ samples_df['log_traffic_pct_change'] = np.log1p(samples_df['traffic_pct_change']
 samples_df['pop_change_x_mbta'] = samples_df['pop_pct_change'] * samples_df['mbta_usage']
 samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dist_to_mbta_stop']
 samples_df['mbta_x_dist'] = samples_df['mbta_usage'] * samples_df['dist_to_mbta_stop']
+
 
 # --- 3. Update features list ---
 features = [
@@ -208,27 +209,27 @@ y = samples_df['log_traffic_pct_change']
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # --- Linear Regression ---
-model = LinearRegression()
-model.fit(X_train, y_train)
-y_pred_log = model.predict(X_test)
-y_pred = np.expm1(y_pred_log) - epsilon
+# model = LinearRegression()
+# model.fit(X_train, y_train)
+# y_pred_log = model.predict(X_test)
+# y_pred = np.expm1(y_pred_log) - epsilon
 y_true = np.expm1(y_test) - epsilon
 
-print("\nLinear Regression:")
-print(f"MAE: {mean_absolute_error(y_true, y_pred):.4f}, RMSE: {np.sqrt(mean_squared_error(y_true, y_pred)):.4f}")
-print(f"The r2 score is {r2_score(y_true, y_pred)}")
+# print("\nLinear Regression:")
+# print(f"MAE: {mean_absolute_error(y_true, y_pred):.4f}, RMSE: {np.sqrt(mean_squared_error(y_true, y_pred)):.4f}")
+# print(f"The r2 score is {r2_score(y_true, y_pred)}")
 
 # --- Random Forest ---
-rf = RandomForestRegressor(n_estimators=300, max_depth=10, min_samples_split=5, min_samples_leaf=2, random_state=42, oob_score=True)
-rf.fit(X_train, y_train)
-y_pred_log_rf = rf.predict(X_test)
-y_pred_rf = np.expm1(y_pred_log_rf) - epsilon
+# rf = RandomForestRegressor(n_estimators=300, max_depth=10, min_samples_split=5, min_samples_leaf=2, random_state=42, oob_score=True)
+# rf.fit(X_train, y_train)
+# y_pred_log_rf = rf.predict(X_test)
+# y_pred_rf = np.expm1(y_pred_log_rf) - epsilon
 
-print("\nRandom Forest:")
-print(f"MAE: {mean_absolute_error(y_true, y_pred_rf):.4f}, RMSE: {np.sqrt(mean_squared_error(y_true, y_pred_rf)):.4f}, OOB Score: {rf.oob_score_:.4f}")
-print(f"The r2 score is {r2_score(y_true, y_pred_rf)}")
-print("Top Feature Importances:")
-print(pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False).head(10))
+# print("\nRandom Forest:")
+# print(f"MAE: {mean_absolute_error(y_true, y_pred_rf):.4f}, RMSE: {np.sqrt(mean_squared_error(y_true, y_pred_rf)):.4f}, OOB Score: {rf.oob_score_:.4f}")
+# print(f"The r2 score is {r2_score(y_true, y_pred_rf)}")
+# print("Top Feature Importances:")
+# print(pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False).head(10))
 
 # --- XGBoost ---
 xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=4, subsample=0.8, colsample_bytree=0.8, random_state=42)
@@ -243,6 +244,87 @@ print("Top Feature Importances:")
 print(pd.Series(xgb.feature_importances_, index=X_train.columns).sort_values(ascending=False).head(10))
 
 # --- Plot Residuals ---
-plot_residuals(y_true, y_pred, model_name="Linear Regression")
-plot_residuals(y_true, y_pred_rf, model_name="Random Forest")
+# plot_residuals(y_true, y_pred, model_name="Linear Regression")
+# plot_residuals(y_true, y_pred_rf, model_name="Random Forest")
 plot_residuals(y_true, y_pred_xgb, model_name="XGBoost")
+
+mae = mean_absolute_error(y_true, y_pred_xgb)
+mean_target = np.mean(y_true)
+std_target = np.std(y_true)
+range_target = np.max(y_true) - np.min(y_true)
+
+normalized_mae_mean = mae / mean_target
+normalized_mae_std = mae / std_target
+normalized_mae_range = mae / range_target
+
+print(f"MAE: {mae:.4f}")
+print(f"Normalized MAE (mean): {normalized_mae_mean:.4f}")
+print(f"Normalized MAE (std): {normalized_mae_std:.4f}")
+print(f"Normalized MAE (range): {normalized_mae_range:.4f}")
+
+rmse = np.sqrt(np.mean((y_true - y_pred_xgb) ** 2))
+mean_y = np.mean(y_true)
+std_y = np.std(y_true)
+range_y = np.max(y_true) - np.min(y_true)
+
+rmse_norm_mean = rmse / mean_y
+rmse_norm_std = rmse / std_y
+rmse_norm_range = rmse / range_y
+
+print("Raw RMSE:", rmse)
+print("Normalized RMSE (mean):", rmse_norm_mean)
+print("Normalized RMSE (std):", rmse_norm_std)
+print("Normalized RMSE (range):", rmse_norm_range)
+
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x=y_true, y=y_pred_xgb, alpha=0.6, s=40)
+plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'r--', label='Ideal Fit')
+plt.xlabel('Actual Traffic Volume % Change')
+plt.ylabel('Predicted Traffic Volume % Change')
+plt.title('Predicted vs. Actual Traffic Volume (XGBoost)')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# import shap
+# explainer = shap.Explainer(xgb)
+# shap_values = explainer(X_test)
+# shap.plots.beeswarm(shap_values)
+
+
+
+# --- Diagnose Class 4 behavior ---
+class4_df = samples_df.copy()
+
+# Compute raw prediction errors if available
+if 'log_traffic_pct_change' in class4_df.columns:
+    class4_df['actual'] = np.expm1(class4_df['log_traffic_pct_change']) - epsilon
+    # If you're doing in-sample diagnostics (optional)
+    class4_features = class4_df[features]
+    class4_preds_log = xgb.predict(class4_features)
+    class4_df['predicted'] = np.expm1(class4_preds_log) - epsilon
+    class4_df['abs_error'] = np.abs(class4_df['predicted'] - class4_df['actual'])
+
+    top_outliers = class4_df.sort_values('abs_error', ascending=False).head(10)
+    print("\nTop 10 Class 4 Outliers:")
+    print(top_outliers[['sensor_id', 'traffic_start', 'traffic_end', 'actual', 'predicted', 'abs_error']])
+
+# Visualize actual vs. predicted
+# plt.figure(figsize=(8, 6))
+# plt.scatter(class4_df['actual'], class4_df['predicted'], alpha=0.6, s=40)
+# plt.plot([class4_df['actual'].min(), class4_df['actual'].max()],
+#          [class4_df['actual'].min(), class4_df['actual'].max()],
+#          'r--')
+# plt.xlabel("Actual Traffic Change (Class 4)")
+# plt.ylabel("Predicted Traffic Change")
+# plt.title("Actual vs Predicted Traffic % Change — Class 4 Roads")
+# plt.grid(True)
+# plt.tight_layout()
+# plt.show()
+
+# Check for large actual and near-zero predicted
+# extreme = class4_df[(class4_df['actual'] > 300) & (class4_df['predicted'] < 1)]
+# print("\nExtreme Class 4 Outliers:")
+# print(extreme[['sensor_id', 'traffic_start', 'traffic_end', 'pop_start', 'pop_pct_change',
+#                'year_gap', 'dist_to_mbta_stop', 'mbta_usage', 'actual', 'predicted']])
