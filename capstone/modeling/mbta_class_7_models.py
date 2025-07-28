@@ -108,24 +108,28 @@ samples = daily_avg.merge(pop_hist, on=['town_name', 'year'])
 # --- Create time-paired samples ---
 print("Creating time-difference samples...")
 samples = samples.sort_values(['sensor_id', 'year'])
-samples_df = []
 
-for sensor_id, group in samples.groupby('sensor_id'):
-    group = group.sort_values('year')
-    for i in range(len(group) - 1):
-        samples_df.append({
-            'sensor_id': sensor_id,
-            'year_start': group.iloc[i]['year'],
-            'year_end': group.iloc[i+1]['year'],
-            'traffic_start': group.iloc[i]['avg_daily_volume'],
-            'traffic_end': group.iloc[i+1]['avg_daily_volume'],
-            'pop_start': group.iloc[i]['population'],
-            'pop_end': group.iloc[i+1]['population'],
-            'town_name': group.iloc[i]['town_name'],
-            'functional_class': group.iloc[i]['functional_class']
-        })
+samples_df = (
+    samples.sort_values(['sensor_id', 'year'])
+    .groupby('sensor_id')
+    .agg({
+        'year': ['first', 'last'],
+        'avg_daily_volume': ['first', 'last'],
+        'population': ['first', 'last'],
+        'town_name': 'first',
+        'functional_class': 'first'
+    })
+)
 
-samples_df = pd.DataFrame(samples_df)
+samples_df.columns = [
+    'year_start', 'year_end',
+    'traffic_start', 'traffic_end',
+    'pop_start', 'pop_end',
+    'town_name', 'functional_class'
+]
+samples_df = samples_df.reset_index()
+
+# Recalculate features
 samples_df['traffic_pct_change'] = (samples_df['traffic_end'] - samples_df['traffic_start']) / samples_df['traffic_start']
 samples_df['pop_pct_change'] = (samples_df['pop_end'] - samples_df['pop_start']) / samples_df['pop_start']
 samples_df['log_pop_start'] = np.log1p(samples_df['pop_start'])
@@ -187,28 +191,7 @@ features = [
 
 X = samples_df[features]
 y = samples_df['traffic_pct_change']
-
-# Linear Regression
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-model = LinearRegression()
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
-
-print("\nLinear Regression:")
-print(f"MAE: {mean_absolute_error(y_test, y_pred):.4f}, RMSE: {np.sqrt(mean_squared_error(y_test, y_pred)):.4f}")
-r2 = r2_score(y_test, y_pred)
-print(f"The r2 score is {r2}")
-
-# Random Forest
-rf = RandomForestRegressor(n_estimators=300, max_depth=10, min_samples_split=5, min_samples_leaf=2, random_state=42, oob_score=True)
-rf.fit(X_train, y_train)
-y_pred_rf = rf.predict(X_test)
-print("\nRandom Forest:")
-print(f"MAE: {mean_absolute_error(y_test, y_pred_rf):.4f}, RMSE: {np.sqrt(mean_squared_error(y_test, y_pred_rf)):.4f}, OOB Score: {rf.oob_score_:.4f}")
-r2 = r2_score(y_test, y_pred_rf)
-print(f"The r2 score is {r2}")
-print("Top Feature Importances:")
-print(pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False).head(10))
 
 # XGBoost
 xgb = XGBRegressor(
@@ -221,16 +204,55 @@ xgb = XGBRegressor(
 )
 xgb.fit(X_train, y_train)
 y_pred_xgb = xgb.predict(X_test)
+
+plot_residuals(y_test, y_pred_xgb, model_name="XGBoost")
+
+# Use raw predicted and true percentage changes directly:
+y_true = y_test.values  # no expm1
+y_pred_true = y_pred_xgb  # no expm1
+
+mae = mean_absolute_error(y_true, y_pred_true)
+rmse = np.sqrt(mean_squared_error(y_true, y_pred_true))
+
+mean_target = np.mean(np.abs(y_true))  # use absolute mean to avoid division by near-zero mean
+std_target = np.std(y_true)
+range_target = np.max(y_true) - np.min(y_true)
+
+normalized_mae_mean = mae / mean_target if mean_target != 0 else np.nan
+normalized_mae_std = mae / std_target if std_target != 0 else np.nan
+normalized_mae_range = mae / range_target if range_target != 0 else np.nan
+
+normalized_rmse_mean = rmse / mean_target if mean_target != 0 else np.nan
+normalized_rmse_std = rmse / std_target if std_target != 0 else np.nan
+normalized_rmse_range = rmse / range_target if range_target != 0 else np.nan
+
 print("\nXGBoost Results:")
-print(f"MAE: {mean_absolute_error(y_test, y_pred_xgb):.4f}, RMSE: {np.sqrt(mean_squared_error(y_test, y_pred_xgb)):.4f}")
+
+print(f"MAE: {mae:.4f}")
+print(f"Normalized MAE (mean): {normalized_mae_mean:.4f}")
+print(f"Normalized MAE (std): {normalized_mae_std:.4f}")
+print(f"Normalized MAE (range): {normalized_mae_range:.4f}")
+
+print(f"Raw RMSE: {rmse:.4f}")
+print(f"Normalized RMSE (mean): {normalized_rmse_mean:.4f}")
+print(f"Normalized RMSE (std): {normalized_rmse_std:.4f}")
+print(f"Normalized RMSE (range): {normalized_rmse_range:.4f}")
+
 r2 = r2_score(y_test, y_pred_xgb)
 print(f"The r2 score is {r2}")
 print("Top Feature Importances:")
 print(pd.Series(xgb.feature_importances_, index=X_train.columns).sort_values(ascending=False).head(10))
 
-plot_residuals(y_test, y_pred, model_name="Linear Regression")
-plot_residuals(y_test, y_pred_rf, model_name="Random Forest")
-plot_residuals(y_test, y_pred_xgb, model_name="XGBoost")
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x=y_true, y=y_pred_xgb, alpha=0.6, s=40)
+plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'r--', label='Ideal Fit')
+plt.xlabel('Actual Traffic Volume')
+plt.ylabel('Predicted Traffic Volume')
+plt.title('Predicted vs. Actual Traffic Volume (XGBoost)')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 # ~~~~PREDICT~~~~~~~
 
@@ -244,68 +266,74 @@ max_year = pop_hist['year'].max()
 pop_latest = pop_hist[pop_hist['year'] == max_year][['town_name', 'population']].copy()
 
 # 3. Get latest traffic volume per sensor for max_year
-traffic_latest = daily_avg[daily_avg['year'] == max_year][['sensor_id', 'avg_daily_volume']].copy()
-traffic_latest = traffic_latest.rename(columns={'avg_daily_volume': 'traffic_start'})
-
-# 4. Merge sensor metadata (functional_class, town_name) and MBTA features
-sensor_features_latest = traffic.merge(traffic_latest, on='sensor_id').merge(
-    pop_latest, on='town_name', how='left'
+traffic_latest = (
+    daily_avg.sort_values(['sensor_id', 'year'], ascending=[True, False])
+    .drop_duplicates('sensor_id')
+    .rename(columns={'avg_daily_volume': 'traffic_start', 'year': 'traffic_year'})
+)
+breakpoint()
+# 3. Merge with traffic and sensor metadata
+sensor_features_latest = (
+    traffic.merge(traffic_latest, on=['sensor_id','town_name','functional_class'])
+           .merge(pop_latest, on='town_name', how='left')
 )
 
-# Keep only the closest MBTA stop per sensor_id
+# 4. Deduplicate MBTA features — keep closest stop per sensor
 sensor_features_dedup = (
     sensor_features.sort_values(['sensor_id', 'dist_to_mbta_stop'])
-    .drop_duplicates(subset='sensor_id', keep='first')
+                   .drop_duplicates('sensor_id', keep='first')
 )
 
-# 5. Add MBTA features: dist_to_mbta_stop, mbta_usage from sensor_features (from your previous code)
+# 5. Add MBTA features
 sensor_features_latest = sensor_features_latest.merge(
-    sensor_features_dedup, on='sensor_id', how='left'
+    sensor_features_dedup[['sensor_id', 'mbta_usage', 'dist_to_mbta_stop']],
+    on='sensor_id', how='left'
 )
 
-sensor_features_latest.fillna({'dist_to_mbta_stop': sensor_features_latest['dist_to_mbta_stop'].max(), 'mbta_usage': 0}, inplace=True)
+# Fill missing MBTA values
+sensor_features_latest['dist_to_mbta_stop'].fillna(sensor_features_latest['dist_to_mbta_stop'].max(), inplace=True)
+sensor_features_latest['mbta_usage'].fillna(0, inplace=True)
 
-# 6. Calculate new population after +5% increase
+# 6. Population increase simulation (+5%)
 sensor_features_latest['pop_start'] = sensor_features_latest['population']
 sensor_features_latest['pop_end'] = sensor_features_latest['pop_start'] * 1.05
-sensor_features_latest['pop_pct_change'] = 0.05  # fixed increase
+sensor_features_latest['pop_pct_change'] = 0.05  # constant for all
 
-# 7. Log transform features
+# 7. Feature engineering
 sensor_features_latest['log_pop_start'] = np.log1p(sensor_features_latest['pop_start'])
 sensor_features_latest['log_traffic_start'] = np.log1p(sensor_features_latest['traffic_start'])
+sensor_features_latest['year_gap'] = 1  # assuming 1-year projection
 
-# 8. year_gap = 1 (predicting one year difference)
-sensor_features_latest['year_gap'] = 1
-
-# 9. One-hot encode functional_class to match model features
+# 8. One-hot encode functional class to match model
 functional_dummies = pd.get_dummies(sensor_features_latest['functional_class'], prefix='func_class')
 
-# To ensure same dummy columns as training data
+# Ensure all expected columns are present
 for col in [c for c in X.columns if c.startswith('func_class_')]:
     if col not in functional_dummies.columns:
         functional_dummies[col] = 0
-
-# Align columns order
 functional_dummies = functional_dummies[[c for c in X.columns if c.startswith('func_class_')]]
 
-# 10. Assemble feature DataFrame for prediction
+# 9. Assemble final features for prediction
 X_pred = pd.concat([
-    sensor_features_latest[['pop_pct_change', 'pop_start', 'traffic_start', 'log_pop_start', 'log_traffic_start', 'year_gap', 'dist_to_mbta_stop', 'mbta_usage']],
+    sensor_features_latest[['pop_pct_change', 'pop_start', 'traffic_start',
+                            'log_pop_start', 'log_traffic_start', 'year_gap',
+                            'dist_to_mbta_stop', 'mbta_usage']],
     functional_dummies
 ], axis=1)
 
-# 11. Predict traffic_pct_change with Random Forest model
+# 10. Predict traffic change
 predicted_traffic_pct_change = xgb.predict(X_pred)
 
-# 12. Calculate predicted traffic volume after population increase
+# 11. Calculate predicted traffic volume
 sensor_features_latest['predicted_traffic_pct_change'] = predicted_traffic_pct_change
 sensor_features_latest['predicted_traffic_volume'] = sensor_features_latest['traffic_start'] * (1 + predicted_traffic_pct_change)
 
-# 13. Output results
+# 12. Output result
 result_df = sensor_features_latest[[
-    'sensor_id', 'town_name', 'functional_class', 'pop_start', 'pop_end',
-    'traffic_start', 'predicted_traffic_pct_change', 'predicted_traffic_volume'
+    'sensor_id', 'town_name', 'functional_class', 'traffic_year',
+    'pop_start', 'pop_end', 'traffic_start',
+    'predicted_traffic_pct_change', 'predicted_traffic_volume'
 ]]
 
 print(result_df.head())
-result_df.to_excel('results.xlsx')
+result_df.to_excel('results.xlsx', index=False)
