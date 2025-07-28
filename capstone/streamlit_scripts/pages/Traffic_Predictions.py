@@ -90,26 +90,26 @@ st.session_state["town_name_selected"] = selected_town
 # Subset of predictions
 predictions_df = traffic_df.copy()
 
-predictions_df['pct_increase'] = predictions_df['pct_increase'].fillna(0.05)
-max_pct = predictions_df['pct_increase'].max()
-min_pct = predictions_df['pct_increase'].min()
+# predictions_df['pct_increase'] = predictions_df['pct_increase'].fillna(0.05)
+max_pct = predictions_df['predicted_traffic_pct_change'].max()
+min_pct = predictions_df['predicted_traffic_pct_change'].min()
 def scale_size(x): return 10 + 30 * (x - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 15
-predictions_df['marker_size'] = predictions_df['pct_increase'].apply(scale_size)
+predictions_df['marker_size'] = predictions_df['predicted_traffic_pct_change'].apply(scale_size)
 
 predictions_df["hover_info"] = (
     "<b>Traffic Sensor Info</b><br>" +
     "Sensor ID: " + predictions_df["sensor_id"].astype(str) + "<br>" +
-    "Population Change: " + predictions_df["pct_increase"].map("{:.4f}%".format) + "<br>" +
+    "Population Change: " + predictions_df["predicted_traffic_pct_change"].map("{:.4f}%".format) + "<br>" +
     "Initial Traffic: " + predictions_df["traffic_start"].map("{:.2f}".format) + "<br>" +
     "Predicted Traffic: " + predictions_df["predicted_traffic_volume"].map("{:.2f}".format)
 )
-
+predictions_df.rename(columns={"predicted_traffic_pct_change":"Percent Change"}, inplace=True)
 fig = px.scatter_mapbox(
     predictions_df,
     lat="lat",
     lon="lon",
     size="marker_size",
-    color="pct_increase",
+    color="Percent Change",
     color_continuous_scale="RdYlGn_r",
     size_max=20,
     zoom=1,
@@ -162,4 +162,10 @@ st.title("Traffic Impact Simulator")
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("Predicted Traffic Impacts")
-st.dataframe(predictions_df[['sensor_id', 'pct_increase']])
+
+#df cleaning
+display_df = predictions_df.copy()
+display_df = display_df[display_df['town_name'] == st.session_state["town_name_selected"]]
+display_df.rename(columns={"town_name":"Town Name","sensor_id":"Sensor ID", "functional_class":"Functional Class","predicted_traffic_pct_change":"Percent Change","predicted_traffic_volume":"Volume Change"}, inplace=True)
+display_df.drop(columns=["traffic_year","pop_start","pop_end","traffic_start","lat","lon","marker_size", "hover_info"], inplace=True)
+st.dataframe(display_df,hide_index=True)
