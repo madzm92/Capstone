@@ -2,6 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import streamlit as st
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 import plotly.express as px
 
@@ -19,7 +20,13 @@ session = Session()
 @st.cache_data
 def load_data():
     # Load results (already merged model input + output)
-    results = pd.read_excel("results.xlsx")
+    query = """
+        SELECT sensor_id, town_name, functional_class, traffic_year, pop_start, pop_end, 
+        traffic_start, predicted_traffic_pct_change, predicted_traffic_volume
+        FROM general_data.modeling_results
+    """
+    result = session.execute(text(query))
+    results = pd.DataFrame(result.fetchall(), columns=['sensor_id', 'town_name', 'functional_class', 'traffic_year', 'pop_start', 'pop_end', 'traffic_start', 'predicted_traffic_pct_change', 'predicted_traffic_volume'])
 
     # Load parcel data
     parcels = gpd.read_postgis("""
