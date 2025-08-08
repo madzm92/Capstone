@@ -12,81 +12,41 @@ from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-
+from capstone.modeling.shared_functions import (
+    get_distance_to_category, plot_residuals, 
+    plot_diff, show_counts, load_traffic_sensor_data, 
+    load_traffic_counts, load_pop_data, load_land_use, 
+    get_mbta_data, get_land_use_features, get_extra_features,
+    evaluate, train_model)
 
 # Set up the SQLAlchemy engine and session
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
 Session = sessionmaker(bind=engine)
 session = Session()
 
-def plot_residuals(y_test, y_pred, model_name="Model", save_dir="residual_plots"):
-    residuals = y_test - y_pred
-
-    # Create output directory if it doesn't exist
-    os.makedirs(save_dir, exist_ok=True)
-
-    # --- 1. Residuals vs. Predicted ---
-    plt.figure(figsize=(10, 5))
-    sns.scatterplot(x=y_pred, y=residuals)
-    plt.axhline(0, linestyle='--', color='red')
-    plt.xlabel("Predicted Values")
-    plt.ylabel("Residuals")
-    plt.title(f"{model_name} - Residuals vs Predicted")
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{model_name}_residuals_vs_predicted_class_7.png"))
-    plt.close()
-
-    # --- 2. Histogram of Residuals ---
-    plt.figure(figsize=(10, 5))
-    sns.histplot(residuals, bins=30, kde=True)
-    plt.xlabel("Residual")
-    plt.title(f"{model_name} - Residual Distribution")
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{model_name}_residual_distribution_class_7.png"))
-    plt.close()
+functional_classes = ['(7) Local Road or Street']
+excluded_location_ids = []
 
 # --- Load traffic sensor metadata ---
-print("Loading traffic sensors...")
-class_1 = "('(5) Major Collector', '(6) Minor Collector', '(7) Local Road or Street')"
-class_2 = "('(3) Other Principal Arterial','(4) Minor Arterial')"
-traffic = gpd.read_postgis(
-    """
-    SELECT location_id as sensor_id, town_name, functional_class, geom
-    FROM general_data.traffic_nameplate
-    where functional_class in ('(7) Local Road or Street')
-    """,
-    engine,
-    geom_col="geom"
-)
+traffic = load_traffic_sensor_data(engine, functional_classes, excluded_location_ids)
 
 # --- Load historical traffic counts ---
-print("Loading traffic counts...")
-traffic_hist = pd.read_sql("""
-    SELECT tn.location_id as sensor_id, tc.start_date_time as timestamp, tc.hourly_count as volume
-    FROM general_data.traffic_nameplate tn  
-    LEFT JOIN general_data.traffic_counts tc ON tn.location_id = tc.location_id
-    where functional_class in ('(7) Local Road or Street')
-""", engine)
+traffic_hist = load_traffic_counts(engine, functional_classes)
 
 # --- Load population data ---
-print("Loading population data...")
-pop_hist = pd.read_sql("""
-    SELECT ap.year, tcc.town_name, ap.total_population as population
-    FROM general_data.annual_population ap
-    LEFT JOIN general_data.town_census_crosswalk tcc ON ap.zip_code = tcc.zip_code
-""", engine)
+pop_hist = load_pop_data(engine)
 
-# --- Process traffic data ---
-print("Processing traffic data...")
-traffic_hist['timestamp'] = pd.to_datetime(traffic_hist['timestamp'])
-traffic_hist['date'] = traffic_hist['timestamp'].dt.date
-traffic_hist['year'] = traffic_hist['timestamp'].dt.year
+# --- Load land use data ---
+land_use = load_land_use(engine)
 
 # Average daily traffic per sensor
 avg_daily = (
     traffic_hist.groupby(['sensor_id', 'date'])['volume'].sum().reset_index()
 )
 avg_daily['year'] = pd.to_datetime(avg_daily['date']).dt.year
+
+# UNCOMMENT TO: show sensor counts for slide 1
+# show_counts(avg_daily)
 
 daily_avg = (
     avg_daily.groupby(['sensor_id', 'year'])['volume'].mean().reset_index()
@@ -120,7 +80,7 @@ samples_df = (
         'functional_class': 'first'
     })
 )
-
+breakpoint()
 samples_df.columns = [
     'year_start', 'year_end',
     'traffic_start', 'traffic_end',
@@ -130,44 +90,10 @@ samples_df.columns = [
 samples_df = samples_df.reset_index()
 
 # Recalculate features
-samples_df['traffic_pct_change'] = (samples_df['traffic_end'] - samples_df['traffic_start']) / samples_df['traffic_start']
-samples_df['pop_pct_change'] = (samples_df['pop_end'] - samples_df['pop_start']) / samples_df['pop_start']
-samples_df['log_pop_start'] = np.log1p(samples_df['pop_start'])
-samples_df['log_traffic_start'] = np.log1p(samples_df['traffic_start'])
-samples_df['year_gap'] = samples_df['year_end'] - samples_df['year_start']
+samples_df = get_extra_features(samples_df)
 
 # --- Add MBTA stop usage and distance ---
-print("Loading MBTA stop data...")
-mbta_stops = gpd.read_postgis(
-    """
-    SELECT id as stop_id, stop_name, town_name, geometry as geom
-    FROM general_data.commuter_rail_stops
-    """,
-    engine,
-    geom_col="geom"
-)
-
-print("Loading MBTA trip data for 2018...")
-mbta_trips = pd.read_sql("""
-    SELECT stop_id,stop_datetime, direction_id as direction, average_ons, average_offs
-    FROM general_data.commuter_rail_trips
-""", engine)
-
-mbta_trips['year'] = mbta_trips['stop_datetime'].dt.year.replace({2024: 2023})  # Treat Jan 2024 as 2023
-
-mbta_agg = (mbta_trips.groupby(['stop_id', 'year'])[['average_ons', 'average_offs']].sum().reset_index())
-mbta_agg['mbta_usage'] = mbta_agg['average_ons'] + mbta_agg['average_offs']
-
-mbta_stops = mbta_stops.merge(mbta_agg[['stop_id', 'mbta_usage']], on='stop_id', how='left')
-
-# Prepare geometries
-traffic = traffic[traffic.geometry.notnull() & traffic.is_valid & ~traffic.geometry.is_empty]
-mbta_stops = mbta_stops[mbta_stops.geometry.notnull() & mbta_stops.is_valid & ~mbta_stops.geometry.is_empty]
-
-mbta_stops.set_crs("EPSG:26986", inplace=True, allow_override=True)
-
-if traffic.crs.to_epsg() != 26986:
-    traffic = traffic.to_crs("EPSG:26986")
+mbta_stops = get_mbta_data(engine)
 
 print("Calculating distance to nearest MBTA stop...")
 sensor_gdf = traffic[['sensor_id', 'geom']].copy()
@@ -178,22 +104,25 @@ sensor_features = distance_join[['sensor_id', 'dist_to_mbta_stop', 'mbta_usage']
 samples_df = samples_df.merge(sensor_features, on='sensor_id', how='left')
 samples_df.fillna(0, inplace=True)
 
-# --- One-hot encode functional_class ---
-samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
+traffic = traffic[traffic.geometry.notnull() & traffic.is_valid & ~traffic.geometry.is_empty]
+
+if traffic.crs is None:
+    traffic.set_crs("EPSG:4326", inplace=True)
+
+samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
 
 # --- Modeling ---
 print("Running models...")
 features = [
-    'pop_pct_change', 'pop_start', 'traffic_start',
-    'log_pop_start', 'log_traffic_start', 'year_gap',
-    'dist_to_mbta_stop', 'mbta_usage'
+    'year_gap', 'dist_to_school_education', 'dist_to_residential_single_family', 'dist_to_recreational_private',
+    'dist_to_recreational_public', 'dist_to_industrial', 'pop_pct_change', 'mbta_usage', 'dist_to_healthcare',
+    'traffic_start', 'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_transportation',
+    'dist_to_mbta_stop', 'dist_to_religious','dist_to_agricultural', 'dist_to_commercial_retail', 'dist_to_hotels_hospitality',
+    'pop_start', 'log_traffic_start'
 ]
 
-X = samples_df[features]
-y = samples_df['traffic_pct_change']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# XGBoost
+# --- Define model ---
 xgb = XGBRegressor(
     n_estimators=300,
     learning_rate=0.05,
@@ -202,62 +131,13 @@ xgb = XGBRegressor(
     colsample_bytree=0.8,
     random_state=42
 )
-xgb.fit(X_train, y_train)
-y_pred_xgb = xgb.predict(X_test)
 
-plot_residuals(y_test, y_pred_xgb, model_name="XGBoost")
+oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
 
-# Use raw predicted and true percentage changes directly:
-y_true = y_test.values  # no expm1
-y_pred_true = y_pred_xgb  # no expm1
-
-mae = mean_absolute_error(y_true, y_pred_true)
-rmse = np.sqrt(mean_squared_error(y_true, y_pred_true))
-
-mean_target = np.mean(np.abs(y_true))  # use absolute mean to avoid division by near-zero mean
-std_target = np.std(y_true)
-range_target = np.max(y_true) - np.min(y_true)
-
-normalized_mae_mean = mae / mean_target if mean_target != 0 else np.nan
-normalized_mae_std = mae / std_target if std_target != 0 else np.nan
-normalized_mae_range = mae / range_target if range_target != 0 else np.nan
-
-normalized_rmse_mean = rmse / mean_target if mean_target != 0 else np.nan
-normalized_rmse_std = rmse / std_target if std_target != 0 else np.nan
-normalized_rmse_range = rmse / range_target if range_target != 0 else np.nan
-
-print("\nXGBoost Results:")
-
-print(f"MAE: {mae:.4f}")
-print(f"Normalized MAE (mean): {normalized_mae_mean:.4f}")
-print(f"Normalized MAE (std): {normalized_mae_std:.4f}")
-print(f"Normalized MAE (range): {normalized_mae_range:.4f}")
-
-print(f"Raw RMSE: {rmse:.4f}")
-print(f"Normalized RMSE (mean): {normalized_rmse_mean:.4f}")
-print(f"Normalized RMSE (std): {normalized_rmse_std:.4f}")
-print(f"Normalized RMSE (range): {normalized_rmse_range:.4f}")
-
-r2 = r2_score(y_test, y_pred_xgb)
-print(f"The r2 score is {r2}")
-print("Top Feature Importances:")
-print(pd.Series(xgb.feature_importances_, index=X_train.columns).sort_values(ascending=False).head(10))
-
-plt.figure(figsize=(8, 6))
-sns.scatterplot(x=y_true, y=y_pred_xgb, alpha=0.6, s=40)
-plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'r--', label='Ideal Fit')
-plt.xlabel('Actual Traffic Volume % Change')
-plt.ylabel('Predicted Traffic Volume % Change')
-plt.title('Predicted vs. Actual Traffic Volume (XGBoost)')
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+# --- Evaluate ---
+evaluate(oof_true, oof_preds, xgb, X_train)
 
 # ~~~~PREDICT~~~~~~~
-
-import numpy as np
-import pandas as pd
 
 # 1. Determine the max year in population data
 max_year = pop_hist['year'].max()
@@ -271,7 +151,7 @@ traffic_latest = (
     .drop_duplicates('sensor_id')
     .rename(columns={'avg_daily_volume': 'traffic_start', 'year': 'traffic_year'})
 )
-breakpoint()
+
 # 3. Merge with traffic and sensor metadata
 sensor_features_latest = (
     traffic.merge(traffic_latest, on=['sensor_id','town_name','functional_class'])
@@ -304,20 +184,28 @@ sensor_features_latest['log_pop_start'] = np.log1p(sensor_features_latest['pop_s
 sensor_features_latest['log_traffic_start'] = np.log1p(sensor_features_latest['traffic_start'])
 sensor_features_latest['year_gap'] = 1  # assuming 1-year projection
 
+sensor_features_latest = get_land_use_features(land_use, sensor_gdf, sensor_features_latest)
+
 # 8. One-hot encode functional class to match model
 functional_dummies = pd.get_dummies(sensor_features_latest['functional_class'], prefix='func_class')
 
 # Ensure all expected columns are present
-for col in [c for c in X.columns if c.startswith('func_class_')]:
+for col in [c for c in X_train.columns if c.startswith('func_class_')]:
     if col not in functional_dummies.columns:
         functional_dummies[col] = 0
-functional_dummies = functional_dummies[[c for c in X.columns if c.startswith('func_class_')]]
+functional_dummies = functional_dummies[[c for c in X_train.columns if c.startswith('func_class_')]]
 
 # 9. Assemble final features for prediction
+features = [
+    'year_gap', 'dist_to_school_education', 'dist_to_residential_single_family', 'dist_to_recreational_private',
+    'dist_to_recreational_public', 'dist_to_industrial', 'pop_pct_change', 'mbta_usage', 'dist_to_healthcare',
+    'traffic_start', 'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_transportation',
+    'dist_to_mbta_stop', 'dist_to_religious','dist_to_agricultural', 'dist_to_commercial_retail', 'dist_to_hotels_hospitality',
+    'pop_start', 'log_traffic_start'
+]
+
 X_pred = pd.concat([
-    sensor_features_latest[['pop_pct_change', 'pop_start', 'traffic_start',
-                            'log_pop_start', 'log_traffic_start', 'year_gap',
-                            'dist_to_mbta_stop', 'mbta_usage']],
+    sensor_features_latest[features],
     functional_dummies
 ], axis=1)
 
@@ -330,10 +218,17 @@ sensor_features_latest['predicted_traffic_volume'] = sensor_features_latest['tra
 
 # 12. Output result
 result_df = sensor_features_latest[[
-    'sensor_id', 'town_name', 'functional_class', 'traffic_year',
+    'sensor_id', 'town_name', 'functional_class', 
     'pop_start', 'pop_end', 'traffic_start',
     'predicted_traffic_pct_change', 'predicted_traffic_volume'
 ]]
 
 print(result_df.head())
-result_df.to_excel('results.xlsx', index=False)
+result_df.to_excel('class_7_results.xlsx', index=False)
+breakpoint()
+#TODO: why are there duplicates?
+result_df.drop_duplicates(inplace=True, subset=['sensor_id'])
+result_df.to_sql('modeling_results', engine, schema='general_data', if_exists='append', index=False)
+
+# REMOVE FROM TABLE
+# missing dist_to_mbta_stop, mbta_usage:
