@@ -17,7 +17,7 @@ from capstone.modeling.shared_functions import (
     plot_diff, show_counts, load_traffic_sensor_data, 
     load_traffic_counts, load_pop_data, load_land_use, 
     get_mbta_data, get_land_use_features, get_extra_features,
-    evaluate, train_model)
+    evaluate, train_model,get_log_features,multiply_features)
 
 # Set up the SQLAlchemy engine and session
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
@@ -38,6 +38,10 @@ pop_hist = load_pop_data(engine)
 
 # --- Load land use data ---
 land_use = load_land_use(engine)
+
+# --- Add MBTA stop usage and distance ---
+mbta_stops = get_mbta_data(engine)
+
 
 # Average daily traffic per sensor
 avg_daily = (
@@ -80,7 +84,7 @@ samples_df = (
         'functional_class': 'first'
     })
 )
-breakpoint()
+
 samples_df.columns = [
     'year_start', 'year_end',
     'traffic_start', 'traffic_end',
@@ -92,9 +96,11 @@ samples_df = samples_df.reset_index()
 # Recalculate features
 samples_df = get_extra_features(samples_df)
 
-# --- Add MBTA stop usage and distance ---
-mbta_stops = get_mbta_data(engine)
+# NOTE: dropped log_pop_start since it shows high multi-colinearity
+samples_df = get_log_features(samples_df, ['traffic_start'])
 
+
+# TODO: add func for MBTA Distance feature
 print("Calculating distance to nearest MBTA stop...")
 sensor_gdf = traffic[['sensor_id', 'geom']].copy()
 sensor_gdf = sensor_gdf.set_geometry('geom')
@@ -108,9 +114,17 @@ traffic = traffic[traffic.geometry.notnull() & traffic.is_valid & ~traffic.geome
 
 if traffic.crs is None:
     traffic.set_crs("EPSG:4326", inplace=True)
+#########
+
 
 samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
 
+# NOTE: dropped pop_change_x_dist_to_retail due to high co-linearity
+# NOTE: 'pop_change_x_mbta', 'pop_change_x_dist', 'mbta_x_dist', Omitted because they made the model worse
+samples_df = multiply_features(samples_df)
+
+
+breakpoint()
 # --- Modeling ---
 print("Running models...")
 features = [
@@ -118,7 +132,8 @@ features = [
     'dist_to_recreational_public', 'dist_to_industrial', 'pop_pct_change', 'mbta_usage', 'dist_to_healthcare',
     'traffic_start', 'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_transportation',
     'dist_to_mbta_stop', 'dist_to_religious','dist_to_agricultural', 'dist_to_commercial_retail', 'dist_to_hotels_hospitality',
-    'pop_start', 'log_traffic_start'
+    'pop_start', 'log_traffic_start',
+    'mbta_x_healthcare','retail_x_traffic','school_x_pop',
 ]
 
 
@@ -136,7 +151,7 @@ oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
 
 # --- Evaluate ---
 evaluate(oof_true, oof_preds, xgb, X_train)
-
+breakpoint()
 # ~~~~PREDICT~~~~~~~
 
 # 1. Determine the max year in population data

@@ -18,7 +18,7 @@ from capstone.modeling.shared_functions import (
     plot_diff, show_counts, load_traffic_sensor_data, 
     load_traffic_counts, load_pop_data, load_land_use, 
     get_mbta_data, get_land_use_features, get_extra_features,
-    evaluate, train_model)
+    evaluate, train_model, get_log_features,multiply_features)
 
 
 # Set up the SQLAlchemy engine and session
@@ -109,34 +109,34 @@ sensor_features = distance_join[['sensor_id', 'dist_to_mbta_stop', 'mbta_usage']
 samples_df = samples_df.merge(sensor_features, on='sensor_id', how='left')
 samples_df.fillna(0, inplace=True)
 
-# --- One-hot encode functional_class ---
-samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
-
 #----Join land use------
 samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
 
+# NOTE: log_pop_start high corrolation: removed pop_start
+# NOTE: All log distance features performed worse, kept regular distance features
+# NOTE: Keep both traffic_start and log_traffic_start since no co-linearity
+samples_df = get_log_features(samples_df, ['pop_start','traffic_start'])
+
+samples_df = multiply_features(samples_df)
+
+breakpoint()
+# --- One-hot encode functional_class ---
+samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
+
+
 # --- Modeling ---
-
-# --- 1. Log-transform the target ---
-# Add small epsilon to handle near-zero or negative percentage changes
-epsilon = 1e-4
-samples_df['log_traffic_pct_change'] = np.log1p(samples_df['traffic_pct_change'] + epsilon)
-
-# --- 2. Add interaction features ---
-samples_df['pop_change_x_mbta'] = samples_df['pop_pct_change'] * samples_df['mbta_usage']
-samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dist_to_mbta_stop']
-samples_df['mbta_x_dist'] = samples_df['mbta_usage'] * samples_df['dist_to_mbta_stop']
-
 
 # --- 3. Update features list ---
 features = [
-    'pop_pct_change', 'pop_start', 'traffic_start',
+    'pop_pct_change', 'traffic_start', 'dist_to_mbta_stop', 'mbta_usage',
     'log_pop_start', 'log_traffic_start', 'year_gap',
-    'dist_to_mbta_stop', 'mbta_usage',
-    'pop_change_x_mbta', 'pop_change_x_dist', 'mbta_x_dist', 'dist_to_school_education', 'dist_to_commercial_retail', 
-    'dist_to_transportation',  'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_residential_single_family',
+    'dist_to_school_education', 'dist_to_commercial_retail', 'dist_to_transportation',  
+    'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_residential_single_family',
     'dist_to_religious', 'dist_to_recreational_public',  'dist_to_recreational_private', 'dist_to_agricultural',
-     'dist_to_industrial', 'dist_to_healthcare', 'dist_to_hotels_hospitality'
+     'dist_to_industrial', 'dist_to_healthcare', 'dist_to_hotels_hospitality',
+    'pop_change_x_dist_to_retail', 'mbta_x_healthcare', 'retail_x_traffic',
+       'school_x_pop', 'near_school', 'pop_change_x_mbta',
+       'pop_change_x_dist', 'mbta_x_dist'
 ] + [col for col in samples_df.columns if col.startswith('func_class_')]
 
 # --- XGBoost ---

@@ -7,6 +7,9 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.model_selection import KFold
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from statsmodels.tools.tools import add_constant
+
 
 def get_distance_to_category(land_use_gdf, sensor_gdf, category_name, target_crs="EPSG:26986"):
     # Clean the name
@@ -228,10 +231,46 @@ def get_land_use_features(land_use, sensor_gdf, samples_df):
 def get_extra_features(samples_df):
     samples_df['traffic_pct_change'] = (samples_df['traffic_end'] - samples_df['traffic_start']) / samples_df['traffic_start']
     samples_df['pop_pct_change'] = (samples_df['pop_end'] - samples_df['pop_start']) / samples_df['pop_start']
-    samples_df['log_pop_start'] = np.log1p(samples_df['pop_start'])
-    samples_df['log_traffic_start'] = np.log1p(samples_df['traffic_start'])
     samples_df['year_gap'] = samples_df['year_end'] - samples_df['year_start']
     return samples_df
+
+def get_log_features(samples_df, feature_list):
+    for feature in feature_list:
+        new_col_name = "log_" + feature
+        samples_df[new_col_name] = np.log1p(samples_df[feature])
+        check_co_linearity(samples_df, feature, new_col_name)
+    return samples_df
+
+def check_co_linearity(samples_df, feature_1, feature_2, feature_3 = None):
+
+    if feature_3:
+        correlation = samples_df[[feature_1, feature_2, feature_3]].corr()
+
+        print(f"Correlation: {correlation}")
+
+        # Subset of features including both
+        X = samples_df[[feature_1, feature_2, feature_3]]
+        X = add_constant(X)
+
+        vif_data = pd.DataFrame({
+            "feature": X.columns,
+            "VIF": [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+        })
+        print(vif_data)
+    else:
+        correlation = samples_df[feature_1].corr(samples_df[feature_2])
+        print(f"Feature Name: {feature_1}")
+        print(f"Correlation: {correlation:.3f}")
+
+        # Subset of features including both
+        X = samples_df[[feature_1, feature_2]]
+        X = add_constant(X)
+
+        vif_data = pd.DataFrame()
+        vif_data["feature"] = X.columns
+        vif_data["VIF"] = [variance_inflation_factor(X.values, i)
+                        for i in range(X.shape[1])]
+        print(vif_data)
 
 def evaluate(oof_true, oof_preds, xgb, X_train):
     mae = mean_absolute_error(oof_true, oof_preds)
@@ -247,7 +286,7 @@ def evaluate(oof_true, oof_preds, xgb, X_train):
     print("Top Feature Importances:")
     print(pd.Series(xgb.feature_importances_, index=X_train.columns).sort_values(ascending=False).head(30))
 
-    # plot_diff(y_true, y_pred_true)
+    plot_diff(y_true, y_pred_true)
 
 def train_model(xgb, samples_df, features):
     X = samples_df[features]
@@ -277,3 +316,29 @@ def train_model(xgb, samples_df, features):
         oof_preds[val_idx] = preds
         oof_true[val_idx] = y_val
     return oof_preds, oof_true, X_train
+
+def multiply_features(samples_df):
+    samples_df["pop_change_x_dist_to_retail"] = samples_df["pop_pct_change"] * samples_df["dist_to_commercial_retail"]
+    check_co_linearity(samples_df, 'pop_change_x_dist_to_retail', 'pop_pct_change', 'dist_to_commercial_retail')
+
+    samples_df["mbta_x_healthcare"] = samples_df["dist_to_mbta_stop"] * samples_df["dist_to_healthcare"]
+    check_co_linearity(samples_df, 'mbta_x_healthcare', 'dist_to_mbta_stop', 'dist_to_healthcare')
+
+    samples_df["retail_x_traffic"] = samples_df["dist_to_commercial_retail"] * samples_df["traffic_start"]
+    check_co_linearity(samples_df, 'retail_x_traffic', 'dist_to_commercial_retail', 'traffic_start')
+
+    samples_df["school_x_pop"] = samples_df["dist_to_school_education"] * samples_df["pop_start"]
+    check_co_linearity(samples_df, 'school_x_pop', 'dist_to_school_education', 'pop_start')
+
+    samples_df["near_school"] = (samples_df["dist_to_school_education"] < 0.25).astype(int)
+    samples_df["near_retail"] = (samples_df["dist_to_commercial_retail"] < 0.25).astype(int)
+
+    samples_df['pop_change_x_mbta'] = samples_df['pop_pct_change'] * samples_df['mbta_usage']
+    check_co_linearity(samples_df, 'school_x_pop', 'dist_to_school_education', 'pop_start')
+
+    samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dist_to_mbta_stop']
+    check_co_linearity(samples_df, 'school_x_pop', 'dist_to_school_education', 'pop_start')
+
+    samples_df['mbta_x_dist'] = samples_df['mbta_usage'] * samples_df['dist_to_mbta_stop']
+    check_co_linearity(samples_df, 'school_x_pop', 'dist_to_school_education', 'pop_start')
+    return samples_df

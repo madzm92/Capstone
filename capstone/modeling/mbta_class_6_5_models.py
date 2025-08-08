@@ -18,7 +18,7 @@ from capstone.modeling.shared_functions import (
     plot_diff, show_counts, load_traffic_sensor_data, 
     load_traffic_counts, load_pop_data, load_land_use, 
     get_mbta_data, get_land_use_features, get_extra_features,
-    evaluate, train_model)
+    evaluate, train_model,get_log_features,multiply_features)
 
 
 
@@ -118,53 +118,35 @@ sensor_features = distance_join[['sensor_id', 'dist_to_mbta_stop', 'mbta_usage']
 samples_df = samples_df.merge(sensor_features, on='sensor_id', how='left')
 samples_df.fillna(0, inplace=True)
 
+samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
+
+# NOTE: dropped traffic_pct_change since it shows high multi-colinearity
+# NOTE: dist features showed medium co-linearity, so keeping log features in place of regular, since they did better
+samples_df = get_log_features(samples_df, ['dist_to_commercial_retail','dist_to_agricultural','dist_to_hotels_hospitality','dist_to_religious','dist_to_school_education','dist_to_healthcare',])
+
 # --- One-hot encode functional_class ---
 # samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
 
-samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
-
 # --- Modeling ---
 
-# --- 1. Log-transform the target ---
-# Add small epsilon to handle near-zero or negative percentage changes
-epsilon = 1e-4
-samples_df['log_traffic_pct_change'] = np.log1p(samples_df['traffic_pct_change'] + epsilon)
-
-# --- 2. Add interaction features ---
-samples_df['pop_change_x_mbta'] = samples_df['pop_pct_change'] * samples_df['mbta_usage']
-samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dist_to_mbta_stop']
-samples_df['mbta_x_dist'] = samples_df['mbta_usage'] * samples_df['dist_to_mbta_stop']
-
-# --- 3. Update features list ---
-
-for col in samples_df.columns:
-    if col.startswith("dist_to_"):
-        samples_df[f"log_{col}"] = np.log1p(samples_df[col])
-
-samples_df["pop_change_x_dist_to_retail"] = samples_df["pop_pct_change"] * samples_df["dist_to_commercial_retail"]
-samples_df["mbta_x_healthcare"] = samples_df["dist_to_mbta_stop"] * samples_df["dist_to_healthcare"]
-samples_df["near_school"] = (samples_df["dist_to_school_education"] < 0.25).astype(int)
-samples_df["near_retail"] = (samples_df["dist_to_commercial_retail"] < 0.25).astype(int)
-samples_df["retail_x_traffic"] = samples_df["dist_to_commercial_retail"] * samples_df["traffic_start"]
-samples_df["school_x_pop"] = samples_df["dist_to_school_education"] * samples_df["pop_start"]
+# NOTE: dropped pop_change_x_dist_to_retail due to high co-linearity
+# NOTE: 'pop_change_x_mbta', 'pop_change_x_dist', 'mbta_x_dist', Omitted because they made the model worse
+samples_df = multiply_features(samples_df)
 
 features = [
     'pop_pct_change',
-    'retail_x_traffic',
     'traffic_start',
     'pop_start',
     'year_gap',
-    'mbta_x_healthcare',
     'log_dist_to_commercial_retail',
-    'pop_change_x_dist',
     'log_dist_to_agricultural',
     'log_dist_to_hotels_hospitality',
     'log_dist_to_religious',
     'log_dist_to_school_education',
     'log_dist_to_healthcare',
-    'school_x_pop'
+    'mbta_x_healthcare',
+    'retail_x_traffic', 'school_x_pop', 'near_school', 'near_retail'
 ]
-
 
 # --- XGBoost ---
 xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=4, subsample=0.8, colsample_bytree=0.8, random_state=42)
@@ -178,22 +160,22 @@ breakpoint()
 # ~~~~PREDICT~~~~~~~
 
 # Features must be the same as model training:
-features = [
-    'pop_pct_change',
-    'retail_x_traffic',
-    'traffic_start',
-    'pop_start',
-    'year_gap',
-    'mbta_x_healthcare',
-    'log_dist_to_commercial_retail',
-    'pop_change_x_dist',
-    'log_dist_to_agricultural',
-    'log_dist_to_hotels_hospitality',
-    'log_dist_to_religious',
-    'log_dist_to_school_education',
-    'log_dist_to_healthcare',
-    'school_x_pop'
-]
+# features = [
+#     'pop_pct_change',
+#     'retail_x_traffic',
+#     'traffic_start',
+#     'pop_start',
+#     'year_gap',
+#     'mbta_x_healthcare',
+#     'log_dist_to_commercial_retail',
+#     'pop_change_x_dist',
+#     'log_dist_to_agricultural',
+#     'log_dist_to_hotels_hospitality',
+#     'log_dist_to_religious',
+#     'log_dist_to_school_education',
+#     'log_dist_to_healthcare',
+#     'school_x_pop'
+# ]
 
 # If you want to predict traffic changes for a 5% increase in population, set pop_pct_change = 0.05
 samples_df['pop_pct_change'] = 0.05

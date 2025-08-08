@@ -18,7 +18,7 @@ from capstone.modeling.shared_functions import (
     plot_diff, show_counts, load_traffic_sensor_data, 
     load_traffic_counts, load_pop_data, load_land_use, 
     get_mbta_data, get_land_use_features, get_extra_features,
-    evaluate, train_model)
+    evaluate, train_model,get_log_features,multiply_features)
 
 # Set up the SQLAlchemy engine and session
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
@@ -111,26 +111,24 @@ samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='fu
 #----Join land use------
 samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
 
-# --- 1. Log-transform the target ---
-# Add small epsilon to handle near-zero or negative percentage changes
-epsilon = 1e-4
-samples_df['log_traffic_pct_change'] = np.log1p(samples_df['traffic_pct_change'] + epsilon)
 
-# --- 2. Add interaction features ---
-samples_df['pop_change_x_mbta'] = samples_df['pop_pct_change'] * samples_df['mbta_usage']
-samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dist_to_mbta_stop']
-samples_df['mbta_x_dist'] = samples_df['mbta_usage'] * samples_df['dist_to_mbta_stop']
+samples_df = get_log_features(samples_df, ['pop_start','traffic_start'])
+
+# NOTE: dropped pop_pct_change due to co-lin with pop_change_x_dist_to_retail
+samples_df = multiply_features(samples_df)
 
 # --- 3. Update features list ---
 features = [
-    'pop_pct_change', 'pop_start', 'traffic_start',
-    'log_pop_start', 'log_traffic_start', 'year_gap',
-    'dist_to_mbta_stop', 'mbta_usage',
-    'pop_change_x_mbta', 'pop_change_x_dist', 'mbta_x_dist', 'dist_to_school_education', 'dist_to_commercial_retail', 
-    'dist_to_transportation',  'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_residential_single_family',
+    'traffic_start','year_gap','mbta_usage', 'dist_to_mbta_stop', 
+    'log_pop_start', 'log_traffic_start', 
+    'dist_to_school_education', 'dist_to_commercial_retail', 'dist_to_transportation',  
+    'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_residential_single_family',
     'dist_to_religious', 'dist_to_recreational_public',  'dist_to_recreational_private', 'dist_to_agricultural',
-     'dist_to_industrial', 'dist_to_healthcare', 'dist_to_hotels_hospitality'
-] + [col for col in samples_df.columns if col.startswith('func_class_')]
+     'dist_to_industrial', 'dist_to_healthcare', 'dist_to_hotels_hospitality',
+    'pop_change_x_dist_to_retail', 'mbta_x_healthcare', 'retail_x_traffic',
+       'school_x_pop', 'near_school', 'pop_change_x_mbta',
+       'pop_change_x_dist', 'mbta_x_dist'
+     ] + [col for col in samples_df.columns if col.startswith('func_class_')]
 
 # --- XGBoost ---
 xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=4, subsample=0.8, colsample_bytree=0.8, random_state=42)
