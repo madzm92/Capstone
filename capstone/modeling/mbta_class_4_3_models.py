@@ -119,8 +119,6 @@ samples_df = get_log_features(samples_df, ['pop_start','traffic_start'])
 
 samples_df = multiply_features(samples_df)
 
-breakpoint()
-# --- One-hot encode functional_class ---
 samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
 
 
@@ -147,92 +145,91 @@ oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
 # --- Evaluate ---
 evaluate(oof_preds, oof_true, xgb, X_train)
 
-breakpoint()
-
-#~~~~Predictions
 # --- Predict for ALL sensors in functional class 3 and 4 ---
-print("Generating predictions for all valid sensor locations...")
 
-# Start from original traffic metadata
-all_sensors = traffic[['sensor_id', 'functional_class', 'town_name']].drop_duplicates()
+# 1. Determine the max year in population data
+common_max_year = min(pop_hist['year'].max(), daily_avg['year'].max())
 
-# Merge with known starting traffic/population
-predict_df = all_sensors.merge(
-    samples_df[['sensor_id', 'traffic_start', 'pop_start', 'log_pop_start', 'log_traffic_start']],
+# 2. Get latest population per town at max_year
+pop_latest = pop_hist[pop_hist['year'] == common_max_year][['town_name', 'population']].copy()
+
+traffic_latest = (
+    daily_avg[daily_avg['year'] == common_max_year]
+    .sort_values(['sensor_id'], ascending=True)
+    .drop_duplicates('sensor_id')
+    .rename(columns={'avg_daily_volume': 'traffic_start', 'year': 'traffic_year'})
+)
+
+# 3. Get latest traffic volume per sensor for max_year
+traffic_latest = (
+    daily_avg.sort_values(['sensor_id', 'year'], ascending=[True, False])
+    .drop_duplicates('sensor_id')
+    .rename(columns={'avg_daily_volume': 'traffic_start', 'year': 'traffic_year'})
+)
+
+# 3. Merge with traffic and sensor metadata
+sensor_features_latest = (
+    traffic.merge(traffic_latest, on=['sensor_id','town_name','functional_class'])
+           .merge(pop_latest, on='town_name', how='left')
+)
+
+# 4. Deduplicate MBTA features — keep closest stop per sensor
+sensor_features_dedup = (
+    sensor_features.sort_values(['sensor_id', 'dist_to_mbta_stop'])
+                   .drop_duplicates('sensor_id', keep='first')
+)
+
+# 5. Add MBTA features
+sensor_features_latest = sensor_features_latest.merge(
+    sensor_features_dedup[['sensor_id', 'mbta_usage', 'dist_to_mbta_stop']],
     on='sensor_id', how='left'
 )
 
-predict_df = get_land_use_features(land_use, sensor_gdf, predict_df)
+# add year predictions are based on
+sensor_features_latest['prediction_year'] = sensor_features_latest['traffic_year']
 
-# Fill missing values with median or default assumptions
-predict_df['traffic_start'] = predict_df['traffic_start'].fillna(predict_df['traffic_start'].median())
-predict_df['pop_start'] = predict_df['pop_start'].fillna(predict_df['pop_start'].median())
-predict_df['log_pop_start'] = np.log1p(predict_df['pop_start'])
-predict_df['log_traffic_start'] = np.log1p(predict_df['traffic_start'])
+# Fill missing MBTA values
+sensor_features_latest['dist_to_mbta_stop'].fillna(sensor_features_latest['dist_to_mbta_stop'].max(), inplace=True)
+sensor_features_latest['mbta_usage'].fillna(0, inplace=True)
 
-# Set population increase assumption (e.g., 5%)
-predict_df['pop_pct_change'] = 0.05
-predict_df['year_gap'] = 1
-predict_df['pop_end'] = predict_df['pop_start'] * (1 + predict_df['pop_pct_change'])
+# 6. Population increase simulation (+5%)
+sensor_features_latest['pop_start'] = sensor_features_latest['population']
+sensor_features_latest['pop_end'] = sensor_features_latest['pop_start'] * 1.05
+sensor_features_latest['pop_pct_change'] = 0.05  # constant for all
 
+# 7. Feature engineering
+sensor_features_latest['log_pop_start'] = np.log1p(sensor_features_latest['pop_start'])
+sensor_features_latest['log_traffic_start'] = np.log1p(sensor_features_latest['traffic_start'])
+sensor_features_latest['year_gap'] = 1  # assuming 1-year projection
 
-# --- Add distance to MBTA stop and usage ---
-predict_df = predict_df.merge(sensor_features, on='sensor_id', how='left')
-predict_df['dist_to_mbta_stop'] = predict_df['dist_to_mbta_stop'].fillna(predict_df['dist_to_mbta_stop'].median())
-predict_df['mbta_usage'] = predict_df['mbta_usage'].fillna(0)
+sensor_features_latest = get_land_use_features(land_use, sensor_gdf, sensor_features_latest)
+sensor_features_latest = multiply_features(sensor_features_latest)
+sensor_features_latest = get_log_features(sensor_features_latest, ['dist_to_commercial_retail','dist_to_agricultural','dist_to_hotels_hospitality','dist_to_religious','dist_to_school_education','dist_to_healthcare',])
 
-# --- Add interaction terms ---
-predict_df['pop_change_x_mbta'] = predict_df['pop_pct_change'] * predict_df['mbta_usage']
-predict_df['pop_change_x_dist'] = predict_df['pop_pct_change'] * predict_df['dist_to_mbta_stop']
-predict_df['mbta_x_dist'] = predict_df['mbta_usage'] * predict_df['dist_to_mbta_stop']
+sensor_features_latest_dummies = pd.get_dummies(sensor_features_latest['functional_class'], columns=['functional_class'], prefix='func_class')
+sensor_features_latest = pd.concat([sensor_features_latest,sensor_features_latest_dummies],axis=1)
 
-# --- One-hot encode functional class ---
-functional_class_col = predict_df[['sensor_id', 'functional_class']].copy()
-predict_df = pd.get_dummies(predict_df, columns=['functional_class'], prefix='func_class')
+X_pred = sensor_features_latest[features]
 
-# 1. Merge in year_start for each sensor (if available)
-sensor_years = samples_df[['sensor_id', 'year_start']].drop_duplicates()
-predict_df = predict_df.merge(sensor_years, on='sensor_id', how='left')
+# 10. Predict traffic change
+predicted_traffic_pct_change = xgb.predict(X_pred)
 
-# 2. Fill missing year_start with default (e.g., latest year with data)
-predict_df['year_start'] = predict_df['year_start'].fillna(2023).astype(int)
+# 11. Calculate predicted traffic volume
+sensor_features_latest['predicted_traffic_pct_change'] = predicted_traffic_pct_change
+sensor_features_latest['predicted_traffic_volume'] = sensor_features_latest['traffic_start'] * (1 + predicted_traffic_pct_change)
 
-# 3. Compute traffic_year (the year we're forecasting for)
-predict_df['traffic_year'] = predict_df['year_start'] + predict_df['year_gap']
-
-# 4. Ensure all expected dummy columns are present
-for col in [c for c in samples_df.columns if c.startswith("func_class_")]:
-    if col not in predict_df.columns:
-        predict_df[col] = 0
-# --- Final prediction ---
-X_pred_all = predict_df[features]
-y_pred_log_all = xgb.predict(X_pred_all.values)
-predict_df['predicted_traffic_pct_change'] = np.expm1(y_pred_log_all) - epsilon
-predict_df['predicted_traffic_volume'] = predict_df['traffic_start'] * (1 + predict_df['predicted_traffic_pct_change'])
-
-# --- Save Results ---
-output_cols = [
-    'sensor_id', 'town_name', 'pop_start', 'traffic_start', 'dist_to_mbta_stop', 'mbta_usage',
-    'predicted_traffic_pct_change', 'predicted_traffic_volume'
-] + [c for c in predict_df.columns if c.startswith('func_class_')]
-
-results_full = predict_df[output_cols].copy()
-
-print(results_full.head())
-
-# Drop duplicates by sensor, overwrite old predictions
-results_full.drop_duplicates(subset=['sensor_id'], inplace=True)
-
-results_full = predict_df[[
-    'sensor_id', 'town_name', 'pop_start', 'traffic_start', 'predicted_traffic_pct_change', 
-    'predicted_traffic_volume', "traffic_year", "pop_end"
-]].copy()
+# 12. Output result
+result_df = sensor_features_latest[[
+    'sensor_id', 'town_name', 'functional_class', 
+    'pop_start', 'pop_end', 'traffic_start',
+    'predicted_traffic_pct_change', 'predicted_traffic_volume', 'prediction_year'
+]]
+print(result_df.head())
 
 # Join functional class back in
-results_full = results_full.merge(functional_class_col, on='sensor_id', how='left')
+# results_full = results_full.merge(functional_class_col, on='sensor_id', how='left')
 breakpoint()
-results_full.drop_duplicates(inplace=True, subset=['sensor_id'])
-results_full.drop('traffic_year', axis=1,inplace=True)
-results_full.to_sql('modeling_results', engine, schema='general_data', if_exists='append', index=False)
+result_df.drop_duplicates(inplace=True, subset=['sensor_id'])
+result_df.to_sql('modeling_results', engine, schema='general_data', if_exists='append', index=False)
 
 # WHY ARE THERE DUPLICATES?!?!?

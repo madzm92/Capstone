@@ -45,7 +45,7 @@ color_map = {
 }
 
 # Last time data was updated (manual process)
-last_ingestion_date = "May 2025"
+last_ingestion_date = "July 15th, 2025"
 
 ### 3. Plot data 
 

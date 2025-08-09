@@ -125,7 +125,7 @@ samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
 samples_df = get_log_features(samples_df, ['dist_to_commercial_retail','dist_to_agricultural','dist_to_hotels_hospitality','dist_to_religious','dist_to_school_education','dist_to_healthcare',])
 
 # --- One-hot encode functional_class ---
-# samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
+samples_df = pd.get_dummies(samples_df, columns=['functional_class'], prefix='func_class')
 
 # --- Modeling ---
 
@@ -145,7 +145,8 @@ features = [
     'log_dist_to_school_education',
     'log_dist_to_healthcare',
     'mbta_x_healthcare',
-    'retail_x_traffic', 'school_x_pop', 'near_school', 'near_retail'
+    'retail_x_traffic', 'school_x_pop', 'near_school', 'near_retail',
+    'func_class_(5) Major Collector', 'func_class_(6) Minor Collector',
 ]
 
 # --- XGBoost ---
@@ -155,77 +156,89 @@ oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
 
 # --- Evaluate ---
 evaluate(oof_true, oof_preds, xgb, X_train)
-breakpoint()
 
 # ~~~~PREDICT~~~~~~~
 
-# Features must be the same as model training:
-# features = [
-#     'pop_pct_change',
-#     'retail_x_traffic',
-#     'traffic_start',
-#     'pop_start',
-#     'year_gap',
-#     'mbta_x_healthcare',
-#     'log_dist_to_commercial_retail',
-#     'pop_change_x_dist',
-#     'log_dist_to_agricultural',
-#     'log_dist_to_hotels_hospitality',
-#     'log_dist_to_religious',
-#     'log_dist_to_school_education',
-#     'log_dist_to_healthcare',
-#     'school_x_pop'
-# ]
+# 1. Determine the max year in population data
+common_max_year = min(pop_hist['year'].max(), daily_avg['year'].max())
 
-# If you want to predict traffic changes for a 5% increase in population, set pop_pct_change = 0.05
-samples_df['pop_pct_change'] = 0.05
+# 2. Get latest population per town at max_year
+pop_latest = pop_hist[pop_hist['year'] == common_max_year][['town_name', 'population']].copy()
 
-# Recalculate any dependent features that involve pop_pct_change
-samples_df['pop_change_x_dist'] = samples_df['pop_pct_change'] * samples_df['dist_to_mbta_stop']
-samples_df['pop_change_x_dist_to_retail'] = samples_df['pop_pct_change'] * samples_df['dist_to_commercial_retail']
+traffic_latest = (
+    daily_avg[daily_avg['year'] == common_max_year]
+    .sort_values(['sensor_id'], ascending=True)
+    .drop_duplicates('sensor_id')
+    .rename(columns={'avg_daily_volume': 'traffic_start', 'year': 'traffic_year'})
+)
 
-# Recalculate interaction features if needed
-samples_df['retail_x_traffic'] = samples_df['dist_to_commercial_retail'] * samples_df['traffic_start']
-samples_df['mbta_x_healthcare'] = samples_df['dist_to_mbta_stop'] * samples_df['dist_to_healthcare']
-samples_df['school_x_pop'] = samples_df['dist_to_school_education'] * samples_df['pop_start']
+# 3. Get latest traffic volume per sensor for max_year
+traffic_latest = (
+    daily_avg.sort_values(['sensor_id', 'year'], ascending=[True, False])
+    .drop_duplicates('sensor_id')
+    .rename(columns={'avg_daily_volume': 'traffic_start', 'year': 'traffic_year'})
+)
 
-# Make sure log features are present
-for col in ['dist_to_commercial_retail', 'dist_to_agricultural', 'dist_to_hotels_hospitality', 
-            'dist_to_religious', 'dist_to_school_education', 'dist_to_healthcare']:
-    log_col = 'log_' + col
-    if log_col not in samples_df.columns:
-        samples_df[log_col] = np.log1p(samples_df[col])
+# 3. Merge with traffic and sensor metadata
+sensor_features_latest = (
+    traffic.merge(traffic_latest, on=['sensor_id','town_name','functional_class'])
+           .merge(pop_latest, on='town_name', how='left')
+)
 
-# Also ensure year_gap is set properly (usually 1 for predicting next year)
-samples_df['year_gap'] = 1
+# 4. Deduplicate MBTA features — keep closest stop per sensor
+sensor_features_dedup = (
+    sensor_features.sort_values(['sensor_id', 'dist_to_mbta_stop'])
+                   .drop_duplicates('sensor_id', keep='first')
+)
 
-# --- Step 2: Extract features matrix for prediction ---
-X_pred = samples_df[features]
+# 5. Add MBTA features
+sensor_features_latest = sensor_features_latest.merge(
+    sensor_features_dedup[['sensor_id', 'mbta_usage', 'dist_to_mbta_stop']],
+    on='sensor_id', how='left'
+)
 
-# --- Step 3: Make predictions ---
-# Predict log-scale traffic % change
-y_pred_log = xgb.predict(X_pred.values)
+# add year predictions are based on
+sensor_features_latest['prediction_year'] = sensor_features_latest['traffic_year']
 
-# Convert back to percentage change scale (inverse of log1p)
-epsilon = 1e-4  # same small number you added during training
-samples_df['predicted_traffic_pct_change'] = np.expm1(y_pred_log) - epsilon
+# Fill missing MBTA values
+sensor_features_latest['dist_to_mbta_stop'].fillna(sensor_features_latest['dist_to_mbta_stop'].max(), inplace=True)
+sensor_features_latest['mbta_usage'].fillna(0, inplace=True)
 
-# --- Step 4: Calculate predicted traffic volume after population increase ---
-samples_df['predicted_traffic_volume'] = samples_df['traffic_start'] * (1 + samples_df['predicted_traffic_pct_change'])
+# 6. Population increase simulation (+5%)
+sensor_features_latest['pop_start'] = sensor_features_latest['population']
+sensor_features_latest['pop_end'] = sensor_features_latest['pop_start'] * 1.05
+sensor_features_latest['pop_pct_change'] = 0.05  # constant for all
 
-# --- Step 5: Output relevant results ---
-result_cols = [
-    'sensor_id', 'town_name', 'functional_class','pop_start','pop_end', 'traffic_start',
-    'pop_pct_change', 'predicted_traffic_pct_change', 'predicted_traffic_volume',
-]
+# 7. Feature engineering
+sensor_features_latest['log_pop_start'] = np.log1p(sensor_features_latest['pop_start'])
+sensor_features_latest['log_traffic_start'] = np.log1p(sensor_features_latest['traffic_start'])
+sensor_features_latest['year_gap'] = 1  # assuming 1-year projection
 
-result_df = samples_df[result_cols].copy()
-result_df = result_df.drop_duplicates(keep='last')
+sensor_features_latest = get_land_use_features(land_use, sensor_gdf, sensor_features_latest)
+sensor_features_latest = multiply_features(sensor_features_latest)
+sensor_features_latest = get_log_features(sensor_features_latest, ['dist_to_commercial_retail','dist_to_agricultural','dist_to_hotels_hospitality','dist_to_religious','dist_to_school_education','dist_to_healthcare',])
 
+sensor_features_latest_dummies = pd.get_dummies(sensor_features_latest['functional_class'], columns=['functional_class'], prefix='func_class')
+sensor_features_latest = pd.concat([sensor_features_latest,sensor_features_latest_dummies],axis=1)
+
+X_pred = sensor_features_latest[features]
+
+# 10. Predict traffic change
+predicted_traffic_pct_change = xgb.predict(X_pred)
+
+# 11. Calculate predicted traffic volume
+sensor_features_latest['predicted_traffic_pct_change'] = predicted_traffic_pct_change
+sensor_features_latest['predicted_traffic_volume'] = sensor_features_latest['traffic_start'] * (1 + predicted_traffic_pct_change)
+
+# 12. Output result
+result_df = sensor_features_latest[[
+    'sensor_id', 'town_name', 'functional_class', 
+    'pop_start', 'pop_end', 'traffic_start',
+    'predicted_traffic_pct_change', 'predicted_traffic_volume', 'prediction_year'
+]]
 print(result_df.head())
 
 # Save results if desired
 breakpoint()
 result_df.drop_duplicates(inplace=True, subset=['sensor_id'])
-result_df.drop('pop_pct_change', axis=1,inplace=True)
 result_df.to_sql('modeling_results', engine, schema='general_data', if_exists='append', index=False)

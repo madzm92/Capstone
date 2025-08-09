@@ -21,12 +21,12 @@ session = Session()
 def load_data():
     # Load results (already merged model input + output)
     query = """
-        SELECT sensor_id, town_name, functional_class, traffic_year, pop_start, pop_end, 
-        traffic_start, predicted_traffic_pct_change, predicted_traffic_volume
+        SELECT sensor_id, town_name, functional_class, pop_start, pop_end, 
+        traffic_start, predicted_traffic_pct_change, predicted_traffic_volume, prediction_year
         FROM general_data.modeling_results
     """
     result = session.execute(text(query))
-    results = pd.DataFrame(result.fetchall(), columns=['sensor_id', 'town_name', 'functional_class', 'traffic_year', 'pop_start', 'pop_end', 'traffic_start', 'predicted_traffic_pct_change', 'predicted_traffic_volume'])
+    results = pd.DataFrame(result.fetchall(), columns=['sensor_id', 'town_name', 'functional_class', 'pop_start', 'pop_end', 'traffic_start', 'predicted_traffic_pct_change', 'predicted_traffic_volume','prediction_year'])
 
     # Load parcel data
     parcels = gpd.read_postgis("""
@@ -108,8 +108,11 @@ predictions_df["hover_info"] = (
     "Sensor ID: " + predictions_df["sensor_id"].astype(str) + "<br>" +
     "Population Change: " + predictions_df["predicted_traffic_pct_change"].map("{:.4f}%".format) + "<br>" +
     "Initial Traffic: " + predictions_df["traffic_start"].map("{:.2f}".format) + "<br>" +
-    "Predicted Traffic: " + predictions_df["predicted_traffic_volume"].map("{:.2f}".format)
+    "Predicted Traffic: " + predictions_df["predicted_traffic_volume"].map("{:.2f}".format) + "<br>" + 
+    "Year Prediction is Based Off: " + predictions_df["prediction_year"]
 )
+vmin = predictions_df['predicted_traffic_pct_change'].quantile(0.01)
+vmax = predictions_df['predicted_traffic_pct_change'].quantile(0.99)
 predictions_df.rename(columns={"predicted_traffic_pct_change":"Percent Change"}, inplace=True)
 fig = px.scatter_mapbox(
     predictions_df,
@@ -118,8 +121,10 @@ fig = px.scatter_mapbox(
     size="marker_size",
     color="Percent Change",
     color_continuous_scale="RdYlGn_r",
-    size_max=20,
-    zoom=1,
+    # color_continuous_midpoint=0,
+    range_color=[vmin, vmax],
+    size_max=15,
+    zoom=0.5,
     text='hover_info',
     title=f"Traffic Sensors Predicted Increase for Town {selected_town}"
 )
@@ -174,5 +179,5 @@ st.subheader("Predicted Traffic Impacts")
 display_df = predictions_df.copy()
 display_df = display_df[display_df['town_name'] == st.session_state["town_name_selected"]]
 display_df.rename(columns={"town_name":"Town Name","sensor_id":"Sensor ID", "functional_class":"Functional Class","predicted_traffic_pct_change":"Percent Change","predicted_traffic_volume":"Volume Change"}, inplace=True)
-display_df.drop(columns=["traffic_year","pop_start","pop_end","traffic_start","lat","lon","marker_size", "hover_info"], inplace=True)
+display_df.drop(columns=["pop_start","pop_end","traffic_start","lat","lon","marker_size", "hover_info"], inplace=True)
 st.dataframe(display_df,hide_index=True)

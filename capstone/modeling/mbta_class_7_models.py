@@ -124,15 +124,15 @@ samples_df = get_land_use_features(land_use, sensor_gdf, samples_df)
 samples_df = multiply_features(samples_df)
 
 
-breakpoint()
 # --- Modeling ---
 print("Running models...")
 features = [
-    'year_gap', 'dist_to_school_education', 'dist_to_residential_single_family', 'dist_to_recreational_private',
+    'year_gap', 'traffic_start', 'pop_start', 
+    'dist_to_school_education', 'dist_to_residential_single_family', 'dist_to_recreational_private',
     'dist_to_recreational_public', 'dist_to_industrial', 'pop_pct_change', 'mbta_usage', 'dist_to_healthcare',
-    'traffic_start', 'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_transportation',
+    'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_transportation',
     'dist_to_mbta_stop', 'dist_to_religious','dist_to_agricultural', 'dist_to_commercial_retail', 'dist_to_hotels_hospitality',
-    'pop_start', 'log_traffic_start',
+    'log_traffic_start',
     'mbta_x_healthcare','retail_x_traffic','school_x_pop',
 ]
 
@@ -151,14 +151,21 @@ oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
 
 # --- Evaluate ---
 evaluate(oof_true, oof_preds, xgb, X_train)
-breakpoint()
+
 # ~~~~PREDICT~~~~~~~
 
 # 1. Determine the max year in population data
-max_year = pop_hist['year'].max()
+common_max_year = min(pop_hist['year'].max(), daily_avg['year'].max())
 
 # 2. Get latest population per town at max_year
-pop_latest = pop_hist[pop_hist['year'] == max_year][['town_name', 'population']].copy()
+pop_latest = pop_hist[pop_hist['year'] == common_max_year][['town_name', 'population']].copy()
+
+traffic_latest = (
+    daily_avg[daily_avg['year'] == common_max_year]
+    .sort_values(['sensor_id'], ascending=True)
+    .drop_duplicates('sensor_id')
+    .rename(columns={'avg_daily_volume': 'traffic_start', 'year': 'traffic_year'})
+)
 
 # 3. Get latest traffic volume per sensor for max_year
 traffic_latest = (
@@ -185,6 +192,9 @@ sensor_features_latest = sensor_features_latest.merge(
     on='sensor_id', how='left'
 )
 
+# add year predictions are based on
+sensor_features_latest['prediction_year'] = sensor_features_latest['traffic_year']
+
 # Fill missing MBTA values
 sensor_features_latest['dist_to_mbta_stop'].fillna(sensor_features_latest['dist_to_mbta_stop'].max(), inplace=True)
 sensor_features_latest['mbta_usage'].fillna(0, inplace=True)
@@ -200,29 +210,9 @@ sensor_features_latest['log_traffic_start'] = np.log1p(sensor_features_latest['t
 sensor_features_latest['year_gap'] = 1  # assuming 1-year projection
 
 sensor_features_latest = get_land_use_features(land_use, sensor_gdf, sensor_features_latest)
+sensor_features_latest = multiply_features(sensor_features_latest)
 
-# 8. One-hot encode functional class to match model
-functional_dummies = pd.get_dummies(sensor_features_latest['functional_class'], prefix='func_class')
-
-# Ensure all expected columns are present
-for col in [c for c in X_train.columns if c.startswith('func_class_')]:
-    if col not in functional_dummies.columns:
-        functional_dummies[col] = 0
-functional_dummies = functional_dummies[[c for c in X_train.columns if c.startswith('func_class_')]]
-
-# 9. Assemble final features for prediction
-features = [
-    'year_gap', 'dist_to_school_education', 'dist_to_residential_single_family', 'dist_to_recreational_private',
-    'dist_to_recreational_public', 'dist_to_industrial', 'pop_pct_change', 'mbta_usage', 'dist_to_healthcare',
-    'traffic_start', 'dist_to_residential_multi-family', 'dist_to_commercial_office', 'dist_to_transportation',
-    'dist_to_mbta_stop', 'dist_to_religious','dist_to_agricultural', 'dist_to_commercial_retail', 'dist_to_hotels_hospitality',
-    'pop_start', 'log_traffic_start'
-]
-
-X_pred = pd.concat([
-    sensor_features_latest[features],
-    functional_dummies
-], axis=1)
+X_pred = pd.concat([sensor_features_latest[features]], axis=1)
 
 # 10. Predict traffic change
 predicted_traffic_pct_change = xgb.predict(X_pred)
@@ -235,7 +225,7 @@ sensor_features_latest['predicted_traffic_volume'] = sensor_features_latest['tra
 result_df = sensor_features_latest[[
     'sensor_id', 'town_name', 'functional_class', 
     'pop_start', 'pop_end', 'traffic_start',
-    'predicted_traffic_pct_change', 'predicted_traffic_volume'
+    'predicted_traffic_pct_change', 'predicted_traffic_volume', 'prediction_year'
 ]]
 
 print(result_df.head())

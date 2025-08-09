@@ -97,11 +97,18 @@ center_lat = selected_town.latitude
 center_lon = selected_town.longitude
 
 # Group use types
-gdf['use_type_group'] = gdf['use_type']
-gdf.loc[gdf['use_type_group'] == 'Multiple Houses on one parcel', 'use_type_group'] = 'Multi-Unit Residence'
-gdf.loc[~gdf['use_type_group'].isin(['Multi-Unit Residence', 'Single Family Residential']), 'use_type_group'] = 'Other'
+land_use_mapping = pd.read_csv("grouped_land_use_types.csv")
 
-### 3. Plot data 
+# Merge to assign grouped values
+gdf = gdf.merge(
+    land_use_mapping,
+    left_on="use_type",
+    right_on="original",
+    how="left"
+)
+gdf["use_type_group"] = gdf["grouped"]
+gdf = gdf.drop(columns=["original", "grouped"])
+
 
 gdf["hover_info"] = (
     "<b>Town Information</b><br>" +

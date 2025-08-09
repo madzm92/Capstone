@@ -1,6 +1,7 @@
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import re
 
 # This file creates generalized definitions for use_type, since there are over 2000
 # different types. Might not be useful, as land use was not found to impact the model
@@ -19,13 +20,16 @@ raw_use_types = raw_use_types_df['use_type'].tolist()
 
 # Define broad categories with associated keywords
 land_use_groups = {
+    "Protected Land": [
+        "chapter 61", "all land designated under chapter 61", "61b", "61a", "undevelopable"
+    ],
     "Residential: Single Family": [
         "single family", "duplex"
     ],
     "Residential: Multi-Family": [
         "two-family", "three-family", "apartment", "condo", "housing",
         "affiliated housing", "apt", "four to eight", "residential condominium",
-        "multiple houses"
+        "multiple houses", "apartments", 
     ],
     "Commercial: Retail": [
         "retail", "store", "shop", "supermarket", "restaurant", "eating",
@@ -107,6 +111,11 @@ land_use_groups = {
 
 def classify_use_type(use_type):
     use_lower = str(use_type).lower()
+    # Force Protected Land priority
+    protected_keywords = [kw.lower() for kw in land_use_groups["Protected Land"]]
+    if any(kw in use_lower for kw in protected_keywords):
+        return "Protected Land"
+    
     for category, keywords in land_use_groups.items():
         if any(kw in use_lower for kw in keywords):
             return category
