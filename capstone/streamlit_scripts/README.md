@@ -1,2 +1,2 @@
 
-To run streamlit scripts: streamlit run <file name>
+To run streamlit scripts: streamlit run Home.py
