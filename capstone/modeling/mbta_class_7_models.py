@@ -17,7 +17,7 @@ from capstone.modeling.shared_functions import (
     plot_diff, show_counts, load_traffic_sensor_data, 
     load_traffic_counts, load_pop_data, load_land_use, 
     get_mbta_data, get_land_use_features, get_extra_features,
-    evaluate, train_model,get_log_features,multiply_features)
+    evaluate, train_model,get_log_features,multiply_features,get_best_params)
 
 # Set up the SQLAlchemy engine and session
 engine = create_engine('postgresql+psycopg2://postgres:yourpassword@localhost/spatial_db')
@@ -136,15 +136,18 @@ features = [
     'mbta_x_healthcare','retail_x_traffic','school_x_pop',
 ]
 
+# get_best_params(samples_df, features)
 
 # --- Define model ---
 xgb = XGBRegressor(
-    n_estimators=300,
-    learning_rate=0.05,
+    n_estimators=500,
+    learning_rate=0.22,
     max_depth=4,
     subsample=0.8,
-    colsample_bytree=0.8,
-    random_state=42
+    colsample_bytree=0.79,
+    random_state=42,
+    min_child_weight=8,
+    gamma=0
 )
 
 oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
@@ -230,10 +233,6 @@ result_df = sensor_features_latest[[
 
 print(result_df.head())
 result_df.to_excel('class_7_results.xlsx', index=False)
-breakpoint()
-#TODO: why are there duplicates?
+
 result_df.drop_duplicates(inplace=True, subset=['sensor_id'])
 result_df.to_sql('modeling_results', engine, schema='general_data', if_exists='append', index=False)
-
-# REMOVE FROM TABLE
-# missing dist_to_mbta_stop, mbta_usage:

@@ -22,7 +22,7 @@ def load_data():
     # Load results (already merged model input + output)
     query = """
         SELECT sensor_id, town_name, functional_class, pop_start, pop_end, 
-        traffic_start, predicted_traffic_pct_change, predicted_traffic_volume, prediction_year
+        traffic_start, predicted_traffic_pct_change, predicted_traffic_volume, prediction_year 
         FROM general_data.modeling_results
     """
     result = session.execute(text(query))
@@ -81,21 +81,39 @@ parcels_df, traffic_df, rail_stops, town_geoms = load_data()
 # Sidebar controls
 st.sidebar.title("Filters")
 
+# --- Town filter ---
+towns_available = sorted(parcels_df["town_name"].unique())
+if "town_name_selected" in st.session_state and st.session_state["town_name_selected"] in towns_available:
+    default_index = towns_available.index(st.session_state["town_name_selected"])
+else:
+    default_index = 0
+
+selected_town = st.sidebar.selectbox("Select Town", towns_available, index=default_index, key="town_selectbox")
+st.session_state["town_name_selected"] = selected_town
+
+# --- Functional class filter ---
+functional_classes_available = ["All Classes"] + sorted(traffic_df["functional_class"].dropna().unique())
+if "functional_class_selected" in st.session_state and st.session_state["functional_class_selected"] in functional_classes_available:
+    func_default_index = functional_classes_available.index(st.session_state["functional_class_selected"])
+else:
+    func_default_index = 0
+
+selected_functional_class = st.sidebar.selectbox("Select Functional Class", functional_classes_available, index=func_default_index,key="functional_class_selectbox")
+st.session_state["functional_class_selected"] = selected_functional_class
+
+# Subset of predictions
+predictions_df = traffic_df.copy()
+
+# Apply functional class filter
+if selected_functional_class != "All Classes":
+    predictions_df = predictions_df[predictions_df["functional_class"] == selected_functional_class]
+
 # use session state to save filtered town for previous tab
 towns_available = sorted(parcels_df["town_name"].unique())
 if "town_name_selected" in st.session_state and st.session_state["town_name_selected"] in towns_available:
     default_index = towns_available.index(st.session_state["town_name_selected"])
 else:
     default_index = 0  # Fallback to the first town if not set
-
-# Render selectbox with default value from session state
-selected_town = st.sidebar.selectbox("Select Town", towns_available, index=default_index)
-
-# Optional: update session state again if user changes it here too
-st.session_state["town_name_selected"] = selected_town
-
-# Subset of predictions
-predictions_df = traffic_df.copy()
 
 # predictions_df['pct_increase'] = predictions_df['pct_increase'].fillna(0.05)
 max_pct = predictions_df['predicted_traffic_pct_change'].max()
@@ -106,6 +124,7 @@ predictions_df['marker_size'] = predictions_df['predicted_traffic_pct_change'].a
 predictions_df["hover_info"] = (
     "<b>Traffic Sensor Info</b><br>" +
     "Sensor ID: " + predictions_df["sensor_id"].astype(str) + "<br>" +
+    "Functional Class" + predictions_df["functional_class"].astype(str) + "<br>" +
     "Population Change: " + predictions_df["predicted_traffic_pct_change"].map("{:.4f}%".format) + "<br>" +
     "Initial Traffic: " + predictions_df["traffic_start"].map("{:.2f}".format) + "<br>" +
     "Predicted Traffic: " + predictions_df["predicted_traffic_volume"].map("{:.2f}".format) + "<br>" + 

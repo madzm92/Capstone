@@ -18,7 +18,7 @@ from capstone.modeling.shared_functions import (
     plot_diff, show_counts, load_traffic_sensor_data, 
     load_traffic_counts, load_pop_data, load_land_use, 
     get_mbta_data, get_land_use_features, get_extra_features,
-    evaluate, train_model, get_log_features,multiply_features)
+    evaluate, train_model, get_log_features,multiply_features,get_best_params)
 
 
 # Set up the SQLAlchemy engine and session
@@ -137,8 +137,18 @@ features = [
        'pop_change_x_dist', 'mbta_x_dist'
 ] + [col for col in samples_df.columns if col.startswith('func_class_')]
 
+# get_best_params(samples_df, features)
+
 # --- XGBoost ---
-xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=4, subsample=0.8, colsample_bytree=0.8, random_state=42)
+xgb = XGBRegressor(
+    n_estimators=500, 
+    learning_rate=0.25, 
+    max_depth=6, 
+    subsample=0.76, 
+    colsample_bytree=0.92, 
+    random_state=42,
+    min_child_weight=1,
+    gamma=0)
 
 oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
 
@@ -226,10 +236,6 @@ result_df = sensor_features_latest[[
 ]]
 print(result_df.head())
 
-# Join functional class back in
-# results_full = results_full.merge(functional_class_col, on='sensor_id', how='left')
-breakpoint()
 result_df.drop_duplicates(inplace=True, subset=['sensor_id'])
 result_df.to_sql('modeling_results', engine, schema='general_data', if_exists='append', index=False)
 
-# WHY ARE THERE DUPLICATES?!?!?

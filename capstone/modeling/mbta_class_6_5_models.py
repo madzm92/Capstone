@@ -18,7 +18,7 @@ from capstone.modeling.shared_functions import (
     plot_diff, show_counts, load_traffic_sensor_data, 
     load_traffic_counts, load_pop_data, load_land_use, 
     get_mbta_data, get_land_use_features, get_extra_features,
-    evaluate, train_model,get_log_features,multiply_features)
+    evaluate, train_model,get_log_features,multiply_features,get_best_params)
 
 
 
@@ -149,8 +149,20 @@ features = [
     'func_class_(5) Major Collector', 'func_class_(6) Minor Collector',
 ]
 
-# --- XGBoost ---
-xgb = XGBRegressor(n_estimators=300, learning_rate=0.05, max_depth=4, subsample=0.8, colsample_bytree=0.8, random_state=42)
+# get_best_params(samples_df, features)
+
+xgb = XGBRegressor(
+    n_estimators=500,
+    learning_rate=0.25,
+    max_depth=6,
+    subsample=0.76,
+    colsample_bytree=0.9,
+    min_child_weight=1,
+    reg_lambda=0.8,
+    reg_alpha=0.1,
+    gamma=0,
+    random_state=42
+)
 
 oof_preds, oof_true, X_train = train_model(xgb, samples_df, features)
 
@@ -238,7 +250,5 @@ result_df = sensor_features_latest[[
 ]]
 print(result_df.head())
 
-# Save results if desired
-breakpoint()
 result_df.drop_duplicates(inplace=True, subset=['sensor_id'])
 result_df.to_sql('modeling_results', engine, schema='general_data', if_exists='append', index=False)

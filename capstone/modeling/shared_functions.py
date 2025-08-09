@@ -9,6 +9,11 @@ from sklearn.metrics import r2_score
 from sklearn.model_selection import KFold
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import train_test_split
+
+from xgboost import XGBRegressor
+import numpy as np
 
 
 def get_distance_to_category(land_use_gdf, sensor_gdf, category_name, target_crs="EPSG:26986"):
@@ -342,3 +347,51 @@ def multiply_features(samples_df):
     samples_df['mbta_x_dist'] = samples_df['mbta_usage'] * samples_df['dist_to_mbta_stop']
     check_co_linearity(samples_df, 'school_x_pop', 'dist_to_school_education', 'pop_start')
     return samples_df
+
+def get_best_params(samples_df, features):
+
+
+    X = samples_df[features]
+    y = samples_df["traffic_pct_change"]
+
+    # --- 3. Train/Test split ---
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    # Base model
+    xgb = XGBRegressor(
+        objective='reg:squarederror',
+        random_state=42,
+        n_jobs=-1
+    )
+
+    # Parameter grid for random search
+    param_dist = {
+        'n_estimators': np.arange(100, 1000, 50),        # number of boosting rounds
+        'learning_rate': np.linspace(0.01, 0.3, 30),     # shrinkage rate
+        'max_depth': np.arange(2, 10),                   # max tree depth
+        'subsample': np.linspace(0.5, 1.0, 20),          # row sampling
+        'colsample_bytree': np.linspace(0.5, 1.0, 20),   # feature sampling
+        'gamma': np.linspace(0, 5, 20),                  # min loss reduction
+        'min_child_weight': np.arange(1, 10)             # min sum of instance weight (hessian)
+    }
+
+    # Randomized search
+    random_search = RandomizedSearchCV(
+        estimator=xgb,
+        param_distributions=param_dist,
+        n_iter=100,              # number of parameter settings sampled
+        scoring='neg_mean_absolute_error',
+        cv=5,                    # 5-fold CV
+        verbose=2,
+        random_state=42,
+        n_jobs=-1
+    )
+
+    # Fit on training data
+    random_search.fit(X_train, y_train)
+
+    # Best params and score
+    print("Best parameters found: ", random_search.best_params_)
+    print("Best MAE score: ", -random_search.best_score_)
